@@ -41,6 +41,9 @@ curl -X POST localhost:8901/api/bank -H 'Content-Type: application/json' \
   -d '{"amount_usd": 25.0, "memo": "algora payout, issue #123", "proof_url": "<receipt>"}'
 ```
 
+Money the agent did not earn (a tip, a resurrection, your own top-up) must
+carry `"source": "donation"` so it never inflates revenue per million tokens.
+
 Banking into a dead agent starts the next generation: same stake, inherited
 wills, zero inherited wealth.
 

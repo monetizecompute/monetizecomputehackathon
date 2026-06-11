@@ -16,6 +16,8 @@ def main():
     p.add_argument("--cycle", type=int, default=60, help="seconds between cycles")
     p.add_argument("--port", type=int, default=8901, help="dashboard port")
     args = p.parse_args()
+    if args.stake <= 0:
+        p.error("--stake must be positive; a $0 life is not a life")
 
     agent = Agent(stake=args.stake, cycle_seconds=args.cycle)
     agent.start_background()

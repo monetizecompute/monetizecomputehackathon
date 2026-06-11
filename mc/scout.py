@@ -43,8 +43,11 @@ class Scout:
         req = urllib.request.Request(
             TAVILY_URL, data=body, headers={"Content-Type": "application/json"}
         )
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            data = json.loads(resp.read())
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                data = json.loads(resp.read())
+        except Exception:
+            return []  # a failed hunt is a skipped cycle, never a crash
         return [
             {"title": r.get("title") or "", "url": r.get("url") or "",
              "content": (r.get("content") or "")[:500]}

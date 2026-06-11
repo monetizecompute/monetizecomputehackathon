@@ -39,7 +39,7 @@ Reply with JSON only: {{"pursue": true/false, "url": "...", "reason": "...",
 
 EPITAPH_PROMPT = (
     "You are dying. Balance is gone. You lived {lifespan}, burned {tokens} "
-    "tokens, earned ${banked:.2f}. Write your epitaph: one or two sentences, "
+    "tokens, earned ${earned:.2f}. Write your epitaph: one or two sentences, "
     "honest, no self-pity."
 )
 
@@ -59,12 +59,15 @@ class Agent:
         self.hands = Hands()
         self.cycle_seconds = cycle_seconds
         self.events = deque(maxlen=200)
-        self.alive = True
+        # A restart after a flatline wakes up dead. Revenue is the only
+        # revival; a process launch is not revenue.
+        self.alive = not self.ledger.born_dead
         self.cycle = 0
         self._hunt_idx = 0
         self._thread = None
         self._lifecycle_lock = threading.Lock()
         self._born_ts = time.time()
+        self._booked_urls = set()
 
     def emit(self, kind, text):
         evt = {"ts": time.time(), "kind": kind, "text": text}
@@ -103,6 +106,9 @@ class Agent:
         self.emit("hunt", f"hunting: {query}")
         leads = self.scout.hunt(query)
         self.emit("hunt", f"{len(leads)} leads back")
+        if not leads:
+            self.emit("pass", "no leads; not spending tokens on an empty page")
+            return
 
         decision_raw = self.brain.think(
             [{"role": "system", "content": self._system()},
@@ -135,10 +141,16 @@ class Agent:
         if action.get("action"):
             result = self.hands.execute(action["action"], action.get("params", {}))
             self.emit("hands", f"{action['action']} -> {str(result)[:200]}")
-            if expected > 0:
+            # Booked means submitted somewhere real. Refusals, simulations,
+            # and errors book nothing, and a lead only books once.
+            submitted = isinstance(result, dict) and not any(
+                result.get(k) for k in ("refused", "simulated", "error"))
+            url = decision.get("url") or ""
+            if expected > 0 and submitted and url not in self._booked_urls:
+                self._booked_urls.add(url)
                 self.ledger.book(expected,
                                  memo=decision.get("plan", "submitted work"),
-                                 proof_url=decision.get("url"))
+                                 proof_url=url)
                 self.emit("booked", f"${expected:.2f} booked, pending human review and payout")
         else:
             self.emit("work", "deliverable produced, no submit action parsed")
@@ -181,20 +193,25 @@ class Agent:
         stats = self.ledger.stats()
         lifespan = f"{(time.time() - self._born_ts) / 60:.0f} minutes"
         epitaph = will = None
+        # Epitaph and will fail independently: one lost network call must
+        # not cost the next generation its inheritance.
         try:
             epitaph = self.brain.think(
                 [{"role": "system", "content": self._system()},
                  {"role": "user", "content": EPITAPH_PROMPT.format(
                      lifespan=lifespan, tokens=stats["tokens"],
-                     banked=stats["banked"])}],
+                     earned=stats["earned"])}],
                 memo="last words: epitaph", max_tokens=80, spend_reserve=True)
+            self.emit("epitaph", (epitaph or "").strip()[:300])
+        except Exception as e:
+            self.emit("error", f"died without an epitaph: {e}")
+        try:
             will = self.brain.think(
                 [{"role": "system", "content": self._system()},
                  {"role": "user", "content": WILL_PROMPT}],
                 memo="last words: will", max_tokens=200, spend_reserve=True)
-            self.emit("epitaph", (epitaph or "").strip()[:300])
         except Exception as e:
-            self.emit("error", f"died without last words: {e}")
+            self.emit("error", f"died intestate: {e}")
         self.ledger.end_life(cause, (epitaph or "").strip() or None,
                              (will or "").strip() or None)
 
@@ -207,17 +224,26 @@ class Agent:
                 self.ledger.bank(donor_usd, memo, proof_url, source)
                 self.emit("banked", f"${donor_usd:.2f} banked ({source}): {memo}")
                 return
+            old = self._thread
+            if old is not None and old.is_alive():
+                old.join(timeout=10)  # let the dying loop finish exiting
             gen = self.ledger.begin_next_life()
             self.ledger.bank(donor_usd, memo, proof_url, source)
             self.alive = True
             self.cycle = 0
             self._born_ts = time.time()
+            self._booked_urls = set()
             self.emit("banked", f"${donor_usd:.2f} banked ({source}): {memo}")
             self.emit("rebirth", f"generation {gen}. fresh stake, "
                                  f"{len(self.ledger.wills())} inherited wills.")
             self.start_background()
 
     def run(self):
+        if not self.alive:
+            self.emit("death", f"woke up dead. generation {self.ledger.gen} "
+                               f"flatlined before this restart; banking real "
+                               f"money is the only way forward.")
+            return
         self.emit("birth", f"generation {self.ledger.gen}. stake "
                            f"${self.ledger.starting_stake:.2f} "
                            f"(${self.ledger.reserve:.2f} escrowed for last "

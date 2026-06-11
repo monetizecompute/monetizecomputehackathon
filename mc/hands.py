@@ -50,4 +50,7 @@ class Hands:
         if not self.live:
             return {"simulated": True, "action": action, "params": params,
                     "note": "set COMPOSIO_API_KEY for live tool execution"}
-        return self._tools().execute_action(action=action, params=params)
+        try:
+            return self._tools().execute_action(action=action, params=params)
+        except Exception as e:  # missing package, bad params, API failure
+            return {"error": f"{type(e).__name__}: {e}", "action": action}

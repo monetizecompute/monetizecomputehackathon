@@ -66,16 +66,22 @@ class Ledger:
     # -- lives ------------------------------------------------------------
 
     def _resume_or_start_life(self):
+        """Resume a life in progress, or report a death. A restart never
+        mints a new generation: that would be a free resurrection, and
+        revenue is the only revival."""
+        self.born_dead = False
         row = self._conn.execute(
             "SELECT gen, died_ts FROM lives ORDER BY gen DESC LIMIT 1"
         ).fetchone()
         if row and row[1] is None:
             return row[0]  # a life in progress; pick it back up
-        gen = (row[0] + 1) if row else 1
+        if row:
+            self.born_dead = True  # dead is dead until money arrives
+            return row[0]
         self._conn.execute(
-            "INSERT INTO lives (gen, born_ts) VALUES (?, ?)", (gen, time.time()))
+            "INSERT INTO lives (gen, born_ts) VALUES (?, ?)", (1, time.time()))
         self._conn.commit()
-        return gen
+        return 1
 
     def begin_next_life(self):
         with self._lock:
@@ -95,20 +101,22 @@ class Ledger:
             self._conn.commit()
 
     def wills(self, limit=3):
-        rows = self._conn.execute(
-            "SELECT gen, will FROM lives WHERE will IS NOT NULL"
-            " ORDER BY gen DESC LIMIT ?", (limit,)).fetchall()
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT gen, will FROM lives WHERE will IS NOT NULL"
+                " ORDER BY gen DESC LIMIT ?", (limit,)).fetchall()
         return [{"gen": g, "will": w} for g, w in rows][::-1]
 
     def lives(self):
-        rows = self._conn.execute(
-            "SELECT l.gen, l.born_ts, l.died_ts, l.cause, l.epitaph,"
-            " COALESCE(SUM(CASE WHEN e.kind = 'debit'"
-            "   THEN e.tokens_in + e.tokens_out END), 0),"
-            " COALESCE(SUM(CASE WHEN e.kind = 'banked' THEN e.amount_usd END), 0)"
-            " - COALESCE(SUM(CASE WHEN e.kind = 'debit' THEN e.amount_usd END), 0)"
-            " FROM lives l LEFT JOIN entries e ON e.gen = l.gen"
-            " GROUP BY l.gen ORDER BY l.gen DESC").fetchall()
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT l.gen, l.born_ts, l.died_ts, l.cause, l.epitaph,"
+                " COALESCE(SUM(CASE WHEN e.kind = 'debit'"
+                "   THEN e.tokens_in + e.tokens_out END), 0),"
+                " COALESCE(SUM(CASE WHEN e.kind = 'banked' THEN e.amount_usd END), 0)"
+                " - COALESCE(SUM(CASE WHEN e.kind = 'debit' THEN e.amount_usd END), 0)"
+                " FROM lives l LEFT JOIN entries e ON e.gen = l.gen"
+                " GROUP BY l.gen ORDER BY l.gen DESC").fetchall()
         keys = ["gen", "born_ts", "died_ts", "cause", "epitaph", "tokens", "net"]
         return [dict(zip(keys, r)) for r in rows]
 
@@ -130,14 +138,16 @@ class Ledger:
 
     def bank(self, amount_usd, memo, proof_url=None, source="earned"):
         """Donations spend the same as earnings but never count as revenue
-        the agent generated. The headline metric only sees earned money."""
+        the agent generated. The headline metric only sees earned money.
+        Unknown sources coerce to the unflattering side."""
         self._add("banked", amount_usd, memo=memo, proof_url=proof_url,
-                  source=source if source in ("earned", "donation") else "earned")
+                  source=source if source in ("earned", "donation") else "donation")
 
     def book(self, amount_usd, memo, proof_url=None):
         self._add("booked", amount_usd, memo=memo, proof_url=proof_url)
 
     def _sum(self, kind):
+        # Caller must hold self._lock.
         row = self._conn.execute(
             "SELECT COALESCE(SUM(amount_usd), 0) FROM entries"
             " WHERE kind = ? AND gen = ?", (kind, self.gen)).fetchone()
@@ -146,21 +156,25 @@ class Ledger:
     def balance(self):
         """Spendable money this life: stake plus earnings, minus spend, minus
         the escrowed last-words reserve."""
-        return (self.starting_stake - self.reserve
-                + self._sum("banked") - self._sum("debit"))
+        with self._lock:
+            return (self.starting_stake - self.reserve
+                    + self._sum("banked") - self._sum("debit"))
 
     def stats(self):
-        spent = self._sum("debit")
-        banked = self._sum("banked")
-        booked = self._sum("booked")
-        earned = self._conn.execute(
-            "SELECT COALESCE(SUM(amount_usd), 0) FROM entries"
-            " WHERE kind = 'banked' AND source = 'earned' AND gen = ?",
-            (self.gen,)).fetchone()[0]
-        row = self._conn.execute(
-            "SELECT COALESCE(SUM(tokens_in + tokens_out), 0), COUNT(*)"
-            " FROM entries WHERE kind = 'debit' AND gen = ?",
-            (self.gen,)).fetchone()
+        # One lock acquisition for the whole snapshot, so the dashboard never
+        # sees a balance and a spend that disagree about the same moment.
+        with self._lock:
+            spent = self._sum("debit")
+            banked = self._sum("banked")
+            booked = self._sum("booked")
+            earned = self._conn.execute(
+                "SELECT COALESCE(SUM(amount_usd), 0) FROM entries"
+                " WHERE kind = 'banked' AND source = 'earned' AND gen = ?",
+                (self.gen,)).fetchone()[0]
+            row = self._conn.execute(
+                "SELECT COALESCE(SUM(tokens_in + tokens_out), 0), COUNT(*)"
+                " FROM entries WHERE kind = 'debit' AND gen = ?",
+                (self.gen,)).fetchone()
         tokens, calls = row
         return {
             "gen": self.gen,
@@ -181,10 +195,11 @@ class Ledger:
         }
 
     def recent(self, limit=50):
-        rows = self._conn.execute(
-            "SELECT ts, gen, kind, amount_usd, tokens_in, tokens_out, model,"
-            " memo, proof_url FROM entries ORDER BY id DESC LIMIT ?",
-            (limit,)).fetchall()
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT ts, gen, kind, amount_usd, tokens_in, tokens_out, model,"
+                " memo, proof_url FROM entries ORDER BY id DESC LIMIT ?",
+                (limit,)).fetchall()
         keys = ["ts", "gen", "kind", "amount_usd", "tokens_in", "tokens_out",
                 "model", "memo", "proof_url"]
         return [dict(zip(keys, r)) for r in rows]

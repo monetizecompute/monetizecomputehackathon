@@ -43,7 +43,7 @@
   .k { display: inline-block; min-width: 64px; margin-right: 8px; font-weight: 600; }
   .k-vitals { color: var(--dim) } .k-hunt { color: #5ab0ff } .k-pursue { color: var(--amber) }
   .k-booked { color: var(--amber) } .k-banked { color: var(--green) } .k-death { color: var(--red) }
-  .k-birth, .k-revival { color: var(--green) } .k-error { color: var(--red) }
+  .k-birth, .k-rebirth { color: var(--green) } .k-error, .k-epitaph { color: var(--red) }
   .k-pass, .k-hands, .k-work { color: var(--text) }
   .ledger div { display: flex; justify-content: space-between; font-size: 12.5px; padding: 3px 0; border-bottom: 1px solid #0f1520; }
   .ledger .memo { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 70%; }
@@ -52,9 +52,12 @@
   .grave .life { padding: 8px 0; border-bottom: 1px solid #0f1520; font-size: 12.5px; }
   .grave .life .row1 { display: flex; justify-content: space-between; }
   .grave .epitaph { color: var(--dim); font-style: italic; margin-top: 2px; }
-  #hunger { font-size: 12px; margin-left: 10px; }
-  #hunger.rich { color: var(--green) } #hunger.hungry { color: var(--amber) }
-  #hunger.starving, #hunger.dead { color: var(--red) }
+  #hunger { font-size: 11px; margin-left: 10px; padding: 2px 8px; border-radius: 9px;
+    border: 1px solid var(--line); text-transform: uppercase; letter-spacing: .08em; }
+  #hunger.rich { color: var(--green); border-color: var(--green) }
+  #hunger.hungry { color: var(--amber); border-color: var(--amber) }
+  #hunger.starving, #hunger.dead { color: var(--red); border-color: var(--red) }
+  #spark { display: block; width: 100%; height: 26px; margin-top: 8px; opacity: .9 }
   footer { margin-top: 18px; color: var(--dim); font-size: 11.5px; }
   #dead-banner { display: none; background: #2a0d12; border: 1px solid var(--red); color: var(--red);
     border-radius: 8px; padding: 12px 16px; margin-bottom: 12px; font-weight: 600; }
@@ -71,6 +74,7 @@
 <div class="lifebar">
   <div class="label">Wallet (life bar) <span id="bal-label"></span></div>
   <div class="bar"><div id="bar" style="width:100%"></div></div>
+  <canvas id="spark" width="1000" height="26"></canvas>
 </div>
 
 <div class="grid">
@@ -106,11 +110,37 @@ const usd = n => {
 };
 const hhmm = ts => new Date(ts * 1000).toTimeString().slice(0, 8);
 
+const balanceHistory = [];
+
+function drawSpark(stake) {
+  const c = $("spark"), ctx = c.getContext("2d");
+  ctx.clearRect(0, 0, c.width, c.height);
+  if (balanceHistory.length < 2) return;
+  ctx.beginPath();
+  const n = balanceHistory.length, top = Math.max(stake, ...balanceHistory);
+  balanceHistory.forEach((b, i) => {
+    const x = i / (n - 1) * c.width;
+    const y = c.height - 2 - Math.max(0, b) / top * (c.height - 4);
+    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+  });
+  ctx.strokeStyle = balanceHistory[n - 1] >= balanceHistory[0] ? "#2bd576" : "#f5b83d";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+function swapKeepingScroll(el, html) {
+  const pos = el.scrollTop;
+  el.innerHTML = html;
+  el.scrollTop = pos;
+}
+
 async function tick() {
   try {
     const s = await (await fetch("/api/status")).json();
-    $("net").textContent = usd(s.net);
-    $("net").className = "value " + (s.net >= 0 ? "green" : "red");
+    // P&L means earned minus spent. Donations are financing, never profit.
+    const pnl = s.earned - s.spent;
+    $("net").textContent = usd(pnl);
+    $("net").className = "value " + (pnl >= 0 ? "green" : "red");
     $("banked").textContent = usd(s.banked);
     $("donated").textContent = s.donated > 0 ? `of which donated: ${usd(s.donated)}` : "";
     $("booked").textContent = usd(s.booked);
@@ -120,7 +150,15 @@ async function tick() {
     $("calls").textContent = s.calls;
     $("cycle").textContent = s.cycle;
     $("bal-label").textContent = `${usd(s.balance)} of ${usd(s.starting_stake)} stake`;
-    $("bar").style.width = Math.max(0, Math.min(100, s.balance / s.starting_stake * 100)) + "%";
+    const pct = Math.max(0, Math.min(100, s.balance / s.starting_stake * 100));
+    const bar = $("bar");
+    bar.style.width = pct + "%";
+    // Pin the gradient to the full track so the bar's tip shows true health:
+    // green only when rich, amber then red as the wallet drains.
+    bar.style.backgroundSize = pct > 0 ? `${10000 / pct}% 100%` : "100% 100%";
+    balanceHistory.push(s.balance);
+    if (balanceHistory.length > 240) balanceHistory.shift();
+    drawSpark(s.starting_stake);
     $("pulse").className = s.alive ? "alive" : "dead";
     $("pulse").textContent = s.alive ? "alive" : "dead";
     $("gen").textContent = `gen ${s.gen}`;
@@ -133,14 +171,14 @@ async function tick() {
       ` · Composio hands ${s.live_hands ? "LIVE" : "demo"}`;
 
     const f = await (await fetch("/api/feed")).json();
-    $("feed").innerHTML = f.events.map(e =>
-      `<div><span class="t">${hhmm(e.ts)}</span><span class="k k-${e.kind}">${e.kind}</span>${esc(e.text)}</div>`
-    ).join("");
-    $("ledger").innerHTML = f.ledger.map(l => {
+    swapKeepingScroll($("feed"), f.events.map(e =>
+      `<div><span class="t">${hhmm(e.ts)}</span><span class="k k-${esc(e.kind)}">${esc(e.kind)}</span>${esc(e.text)}</div>`
+    ).join(""));
+    swapKeepingScroll($("ledger"), f.ledger.map(l => {
       const sign = l.kind === "debit" ? "-" : "+";
       const cls = l.kind === "debit" ? "red" : (l.kind === "banked" ? "green" : "amber");
       return `<div><span class="memo">${esc(l.memo || l.kind)}</span><span class="${cls}">${sign}${usd(l.amount_usd)}</span></div>`;
-    }).join("");
+    }).join(""));
 
     const dead = f.graveyard.filter(g => g.died_ts);
     $("grave-panel").style.display = dead.length ? "block" : "none";
@@ -151,9 +189,13 @@ async function tick() {
         ${g.epitaph ? `<div class="epitaph">"${esc(g.epitaph)}"</div>` : ""}
       </div>`;
     }).join("");
-  } catch (e) { /* server restarting */ }
+  } catch (e) {
+    $("pulse").className = "dead";
+    $("pulse").textContent = "offline";
+  }
 }
-const esc = s => String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const esc = s => String(s).replace(/[&<>"']/g, c =>
+  ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
 tick(); setInterval(tick, 2000);
 </script>
 </body>

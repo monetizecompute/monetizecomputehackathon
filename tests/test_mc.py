@@ -239,10 +239,11 @@ class DonationTest(unittest.TestCase):
         self.assertAlmostEqual(s["donated"], 10.0)
         self.assertAlmostEqual(s["rev_per_mtok"], 3.0)
 
-    def test_unknown_source_coerced_to_earned(self):
+    def test_unknown_source_coerced_to_donation(self):
         led = Ledger(tmp_db(), starting_stake=5.0)
         led.bank(1.0, "x", source="embezzlement")
-        self.assertAlmostEqual(led.stats()["earned"], 1.0)
+        self.assertAlmostEqual(led.stats()["earned"], 0.0)
+        self.assertAlmostEqual(led.stats()["donated"], 1.0)
 
 
 class HandsTest(unittest.TestCase):
@@ -259,6 +260,67 @@ class HandsTest(unittest.TestCase):
         from mc.hands import Hands
         result = Hands().execute("GITHUB_DELETE_REPOSITORY", {})
         self.assertTrue(result["refused"])
+
+
+class NoFreeResurrectionTest(unittest.TestCase):
+    def test_restart_after_death_wakes_up_dead(self):
+        db = tmp_db()
+        agent = Agent(stake=0.005, cycle_seconds=0, db_path=db)
+        agent.run()
+        self.assertFalse(agent.alive)
+        # The process restarts. Same generation, still dead, no fresh stake.
+        agent2 = Agent(stake=0.005, cycle_seconds=0, db_path=db)
+        self.assertFalse(agent2.alive)
+        self.assertEqual(agent2.ledger.gen, agent.ledger.gen)
+        agent2.run()  # must refuse to live
+        self.assertFalse(agent2.alive)
+        # Money still revives.
+        agent2.revive(5.0, "resurrection", source="donation")
+        agent2.alive = False
+        if agent2._thread is not None:
+            agent2._thread.join(timeout=10)
+        self.assertEqual(agent2.ledger.gen, agent.ledger.gen + 1)
+
+
+class BookingGateTest(unittest.TestCase):
+    def _agent_with_scripted_brain(self, action):
+        agent = Agent(stake=5.0, cycle_seconds=0, db_path=tmp_db())
+        script = iter([
+            '{"pursue": true, "url": "https://x.test/1", "expected_usd": 50, "plan": "p"}',
+            'deliverable\n{"action": "%s", "params": {}}' % action,
+        ])
+        agent.brain.think = lambda *a, **k: next(script)
+        return agent
+
+    def test_refused_action_books_nothing(self):
+        agent = self._agent_with_scripted_brain("SHELL_EXEC_RM_RF")
+        agent.run_cycle()
+        self.assertEqual(agent.ledger.stats()["booked"], 0)
+
+    def test_simulated_submit_books_nothing(self):
+        agent = self._agent_with_scripted_brain("GITHUB_CREATE_PULL_REQUEST")
+        agent.run_cycle()  # hands are in demo mode: simulated, not submitted
+        self.assertEqual(agent.ledger.stats()["booked"], 0)
+
+
+class FailedCallStillChargesTest(unittest.TestCase):
+    def test_network_failure_debits_worst_case(self):
+        import urllib.request as ur
+        led = Ledger(tmp_db(), starting_stake=5.0)
+        brain = Brain(led)
+        brain.api_key = "test-key"  # force the live path
+        real = ur.urlopen
+        def boom(*a, **k):
+            raise OSError("connection reset")
+        ur.urlopen = boom
+        try:
+            with self.assertRaises(OSError):
+                brain.think([{"role": "user", "content": "hi"}], "test")
+        finally:
+            ur.urlopen = real
+        recent = led.recent(1)[0]
+        self.assertGreater(recent["amount_usd"], 0)
+        self.assertIn("worst case", recent["memo"])
 
 if __name__ == "__main__":
     unittest.main()
