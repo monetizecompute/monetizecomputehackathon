@@ -208,5 +208,22 @@ class LifecycleTest(unittest.TestCase):
         agent.alive = False
 
 
+
+class DonationTest(unittest.TestCase):
+    def test_donations_never_flatter_the_headline_metric(self):
+        led = Ledger(tmp_db(), starting_stake=5.0)
+        led.debit(0.5, 500_000, 500_000, "m", "spend")
+        led.bank(3.0, "bounty", source="earned")
+        led.bank(10.0, "donor", source="donation")
+        s = led.stats()
+        self.assertAlmostEqual(s["earned"], 3.0)
+        self.assertAlmostEqual(s["donated"], 10.0)
+        self.assertAlmostEqual(s["rev_per_mtok"], 3.0)
+
+    def test_unknown_source_coerced_to_earned(self):
+        led = Ledger(tmp_db(), starting_stake=5.0)
+        led.bank(1.0, "x", source="embezzlement")
+        self.assertAlmostEqual(led.stats()["earned"], 1.0)
+
 if __name__ == "__main__":
     unittest.main()

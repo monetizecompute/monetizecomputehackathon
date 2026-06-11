@@ -31,7 +31,9 @@ CREATE TABLE IF NOT EXISTS entries (
     tokens_out INTEGER DEFAULT 0,
     model TEXT,
     memo TEXT,
-    proof_url TEXT
+    proof_url TEXT,
+    source TEXT NOT NULL DEFAULT 'earned'
+        CHECK (source IN ('earned', 'donation'))
 );
 CREATE TABLE IF NOT EXISTS lives (
     gen INTEGER PRIMARY KEY,
@@ -54,6 +56,10 @@ class Ledger:
         self._lock = threading.Lock()
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.executescript(_SCHEMA)
+        cols = [r[1] for r in self._conn.execute("PRAGMA table_info(entries)")]
+        if "source" not in cols:  # ledgers created before the earned/donation split
+            self._conn.execute(
+                "ALTER TABLE entries ADD COLUMN source TEXT NOT NULL DEFAULT 'earned'")
         self._conn.commit()
         self.gen = self._resume_or_start_life()
 
@@ -109,21 +115,24 @@ class Ledger:
     # -- money ------------------------------------------------------------
 
     def _add(self, kind, amount, tokens_in=0, tokens_out=0, model=None,
-             memo=None, proof_url=None):
+             memo=None, proof_url=None, source="earned"):
         with self._lock:
             self._conn.execute(
                 "INSERT INTO entries (ts, gen, kind, amount_usd, tokens_in,"
-                " tokens_out, model, memo, proof_url)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " tokens_out, model, memo, proof_url, source)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (time.time(), self.gen, kind, amount, tokens_in, tokens_out,
-                 model, memo, proof_url))
+                 model, memo, proof_url, source))
             self._conn.commit()
 
     def debit(self, amount_usd, tokens_in, tokens_out, model, memo):
         self._add("debit", amount_usd, tokens_in, tokens_out, model, memo)
 
-    def bank(self, amount_usd, memo, proof_url=None):
-        self._add("banked", amount_usd, memo=memo, proof_url=proof_url)
+    def bank(self, amount_usd, memo, proof_url=None, source="earned"):
+        """Donations spend the same as earnings but never count as revenue
+        the agent generated. The headline metric only sees earned money."""
+        self._add("banked", amount_usd, memo=memo, proof_url=proof_url,
+                  source=source if source in ("earned", "donation") else "earned")
 
     def book(self, amount_usd, memo, proof_url=None):
         self._add("booked", amount_usd, memo=memo, proof_url=proof_url)
@@ -144,6 +153,10 @@ class Ledger:
         spent = self._sum("debit")
         banked = self._sum("banked")
         booked = self._sum("booked")
+        earned = self._conn.execute(
+            "SELECT COALESCE(SUM(amount_usd), 0) FROM entries"
+            " WHERE kind = 'banked' AND source = 'earned' AND gen = ?",
+            (self.gen,)).fetchone()[0]
         row = self._conn.execute(
             "SELECT COALESCE(SUM(tokens_in + tokens_out), 0), COUNT(*)"
             " FROM entries WHERE kind = 'debit' AND gen = ?",
@@ -156,12 +169,15 @@ class Ledger:
             "balance": self.starting_stake - self.reserve + banked - spent,
             "spent": spent,
             "banked": banked,
+            "earned": earned,
+            "donated": banked - earned,
             "booked": booked,
             "net": banked - spent,
             "tokens": tokens,
             "calls": calls,
-            # The headline metric: dollars earned per million tokens burned.
-            "rev_per_mtok": (banked / tokens * 1_000_000) if tokens else 0.0,
+            # The headline metric: dollars EARNED per million tokens burned.
+            # Donations keep the agent alive; they do not flatter this number.
+            "rev_per_mtok": (earned / tokens * 1_000_000) if tokens else 0.0,
         }
 
     def recent(self, limit=50):

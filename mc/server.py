@@ -83,8 +83,12 @@ def make_handler(agent):
             if not math.isfinite(amount) or amount <= 0:
                 self._json({"error": "amount_usd must be a positive finite number"}, 400)
                 return
+            source = data.get("source", "earned")
+            if source not in ("earned", "donation"):
+                self._json({"error": "source must be 'earned' or 'donation'"}, 400)
+                return
             agent.revive(amount, str(data.get("memo", "confirmed payout"))[:300],
-                         data.get("proof_url"))
+                         data.get("proof_url"), source)
             self._json(agent.status())
 
         def log_message(self, *args):

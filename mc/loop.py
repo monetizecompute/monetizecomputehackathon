@@ -198,20 +198,21 @@ class Agent:
         self.ledger.end_life(cause, (epitaph or "").strip() or None,
                              (will or "").strip() or None)
 
-    def revive(self, donor_usd, memo, proof_url=None):
+    def revive(self, donor_usd, memo, proof_url=None, source="earned"):
         """Outside money after death starts the next generation: same stake,
-        plus the donation, plus every ancestor's will."""
+        plus the money, plus every ancestor's will. Donations spend fine but
+        never count toward revenue per million tokens."""
         with self._lifecycle_lock:
             if self.alive:
-                self.ledger.bank(donor_usd, memo, proof_url)
-                self.emit("banked", f"${donor_usd:.2f} banked: {memo}")
+                self.ledger.bank(donor_usd, memo, proof_url, source)
+                self.emit("banked", f"${donor_usd:.2f} banked ({source}): {memo}")
                 return
             gen = self.ledger.begin_next_life()
-            self.ledger.bank(donor_usd, memo, proof_url)
+            self.ledger.bank(donor_usd, memo, proof_url, source)
             self.alive = True
             self.cycle = 0
             self._born_ts = time.time()
-            self.emit("banked", f"${donor_usd:.2f} banked: {memo}")
+            self.emit("banked", f"${donor_usd:.2f} banked ({source}): {memo}")
             self.emit("rebirth", f"generation {gen}. fresh stake, "
                                  f"{len(self.ledger.wills())} inherited wills.")
             self.start_background()

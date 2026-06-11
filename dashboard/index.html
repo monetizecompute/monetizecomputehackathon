@@ -75,7 +75,7 @@
 
 <div class="grid">
   <div class="card"><div class="label">Net P&amp;L</div><div class="value" id="net">$0.00</div></div>
-  <div class="card"><div class="label">Banked (cash)</div><div class="value green" id="banked">$0.00</div></div>
+  <div class="card"><div class="label">Banked (cash)</div><div class="value green" id="banked">$0.00</div><div class="label" id="donated" style="margin-top:2px"></div></div>
   <div class="card"><div class="label">Booked (pending)</div><div class="value amber" id="booked">$0.00</div></div>
   <div class="card"><div class="label">Rev / 1M tokens</div><div class="value" id="rpm">$0.00</div></div>
 </div>
@@ -112,6 +112,7 @@ async function tick() {
     $("net").textContent = usd(s.net);
     $("net").className = "value " + (s.net >= 0 ? "green" : "red");
     $("banked").textContent = usd(s.banked);
+    $("donated").textContent = s.donated > 0 ? `of which donated: ${usd(s.donated)}` : "";
     $("booked").textContent = usd(s.booked);
     $("spent").textContent = usd(s.spent);
     $("rpm").textContent = usd(s.rev_per_mtok);
