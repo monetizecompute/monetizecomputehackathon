@@ -1,35 +1,47 @@
 # Application post draft (X)
 
-Post with the demo video or dashboard screenshot attached. Dawson posts this
-personally; nothing here auto-sends.
+Post with a 15 second screen recording: wallet ticking down, hunger state,
+a death, the epitaph, the graveyard. Dawson posts this personally; nothing
+here auto-sends.
 
 ---
 
-I gave an agent $5 and a rule: every token it thinks costs real money from its
-own wallet. Balance hits zero, it can't call the model anymore. It dies.
+I gave an agent $5 and a rule: every token it thinks costs real money from
+its own wallet, at real Nebius per-token rates. It cannot overdraw. When it
+can't afford the next thought, it dies.
 
-So it hunts paid work to stay alive. Bounties, micro-tasks, anything legitimate
-it can finish with reasoning and tool calls. The dashboard is a P&L, not a chat
-window. Headline metric: revenue per million tokens.
+So it hunts paid work to stay alive: real cash bounties via Tavily, executed
+via Composio, priced net of platform fees before it spends a token chasing
+them.
 
-Booked isn't banked. Cash only counts with human-verified proof. The agent
-can't pay itself.
+It gets poorer, it thinks smaller: the model ladder follows the wallet, down
+to starvation rations on the cheapest model.
+
+It dies, it spends its last escrowed cents on an epitaph and a will. The next
+generation starts with the same $5, no inherited wealth, and every ancestor's
+lessons in its system prompt.
+
+No blockchain. Real inference costs. Real cash bounties. Booked isn't banked:
+cash only counts with human-verified proof, because that's how bounty payouts
+actually work.
 
 Monetize Compute: the agent that pays for its own inference.
 
-Built on @openclaw runtime, @nebiusai inference (metered per token into the
-ledger), @tavilyai to hunt, @composio to execute. @ship_builders
+@openclaw runtime · @nebiusai is the bank account · @tavilyai hunts ·
+@composio executes · @ship_builders
 
-Repo: <link>
+https://github.com/monetizecompute/monetizecomputehackathon
 
 ---
 
 Alt shorter version:
 
 Every agent demo burns someone else's credits and calls it the future. Mine
-has a wallet. $5 stake, real per-token costs, dies at zero. It has to earn
-faster than it thinks. Live P&L, revenue per million tokens as the score.
+has a wallet. $5 stake, real Nebius per-token costs, can't overdraw, dies at
+zero. It hunts real bounties to stay alive, thinks smaller as it gets poorer,
+and writes its own epitaph with its last escrowed cents. Its will passes to
+the next generation.
 
 @ship_builders @nebiusai @composio @tavilyai @openclaw
 
-Repo: <link>
+https://github.com/monetizecompute/monetizecomputehackathon
