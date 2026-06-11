@@ -89,13 +89,17 @@ class Brain:
         model, price_in, price_out, cap = LADDER[state]
         max_tokens = min(max_tokens or cap, cap)
 
-        if not spend_reserve:
-            est_in = sum(len(m.get("content", "")) // 4 for m in messages) + 64
-            affordable_out = (balance - est_in / 1e6 * price_in) * 1e6 / price_out
-            if affordable_out < 64:
-                raise Insolvent(
-                    f"balance ${balance:.4f} cannot cover the next thought.")
-            max_tokens = int(min(max_tokens, affordable_out))
+        # Even dying is paid for: last words draw on balance plus the escrow
+        # and shrink to what that affords. Nothing in this codebase thinks
+        # for free.
+        budget = balance + (self.ledger.reserve if spend_reserve else 0.0)
+        est_in = sum(len(m.get("content", "")) // 4 for m in messages) + 64
+        affordable_out = (budget - est_in / 1e6 * price_in) * 1e6 / price_out
+        minimum = 16 if spend_reserve else 64
+        if affordable_out < minimum:
+            raise Insolvent(
+                f"balance ${balance:.4f} cannot cover the next thought.")
+        max_tokens = int(min(max_tokens, affordable_out))
 
         if state == "starving" and messages and messages[0]["role"] == "system":
             messages = [
@@ -105,7 +109,8 @@ class Brain:
 
         memo = f"[{state}] {memo}"
         if not self.live:
-            return self._simulate(messages, memo, model, price_in, price_out)
+            return self._simulate(messages, memo, model, price_in, price_out,
+                                  max_tokens)
 
         body = json.dumps({
             "model": model,
@@ -136,12 +141,12 @@ class Brain:
         self.ledger.debit(cost, tin, tout, model, memo)
         return data["choices"][0]["message"]["content"]
 
-    def _simulate(self, messages, memo, model, price_in, price_out):
+    def _simulate(self, messages, memo, model, price_in, price_out, max_tokens):
         # Demo mode: no key yet. Charge realistic token counts against the
         # ledger anyway so the economics on the dashboard are real, and label
         # the spend as simulated so nothing is misrepresented.
         tin = sum(len(m.get("content", "")) // 4 for m in messages)
-        tout = 350
+        tout = min(350, max_tokens)
         cost = tin / 1e6 * price_in + tout / 1e6 * price_out
         self.ledger.debit(cost, tin, tout, f"{model} (simulated)", memo)
         return "[simulated response: set NEBIUS_API_KEY for live inference]"

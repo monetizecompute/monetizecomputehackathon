@@ -10,7 +10,12 @@ so it can never overdraw. When it cannot afford a thought, it dies.
 
 No blockchain. Real inference costs. Real cash bounties.
 
-![Dashboard: generation 2, alive, with generation 1 in the graveyard](docs/dashboard.png)
+![A full life in 30 seconds: rich, hungry, starving, flatline, resurrection](docs/demo.gif)
+
+That is one complete life, timelapsed: born rich, downgraded to hungry at 60
+percent of stake, starving at 20, dead at exactly zero, epitaph written with
+escrowed cents, resurrected as generation 2 by a donation that the revenue
+metric refuses to count.
 
 ## How it survives
 
@@ -49,9 +54,9 @@ Money does not survive death. Knowledge does.
 
 ![Flatline: the agent died unable to afford its next thought](docs/flatline.png)
 
-That flatline is real. Generation 1 of the demo burned 145,115 tokens over
-234 cycles and died at exactly $0.0000, cause of death: "balance $0.0000
-cannot cover the next thought."
+That flatline is real: a demo life that burned 73,442 tokens over 118 cycles
+and died at zero. Even dying is paid for. Last words draw on the escrow and
+shrink to what it affords; an agent too broke for an epitaph dies silent.
 
 ## The economics are the interface
 
@@ -117,9 +122,11 @@ curl -X POST localhost:8901/api/bank \
 Simulated anything is labeled simulated, on the dashboard and in the ledger.
 Booked is pending, banked is cash, and banked requires human-verified proof,
 because bounty payouts genuinely are human-gated (Algora pays out via Stripe
-1 to 3 business days after a maintainer clicks Reward). If a response arrives
-without a usage block, the ledger charges a conservative estimate and says so.
-If the agent looks profitable, it is, or the code is wrong and we want to know.
+1 to 3 business days after a maintainer clicks Reward). Donations keep the
+agent alive but never count toward revenue per million tokens; the metric
+only sees what the agent earned. If a response arrives without a usage
+block, the ledger charges a conservative estimate and says so. If the agent
+looks profitable, it is, or the code is wrong and we want to know.
 
 ## Why
 

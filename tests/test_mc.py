@@ -92,6 +92,24 @@ class BrainTest(unittest.TestCase):
                                "last words", spend_reserve=True)
         self.assertTrue(out)
 
+
+    def test_last_words_cannot_exceed_the_escrow(self):
+        led = Ledger(tmp_db(), starting_stake=1.0)
+        led.debit(led.balance(), 10, 10, "m", "exactly broke")
+        floor = led.balance() - led.reserve
+        Brain(led).think([{"role": "user", "content": "epitaph"}],
+                         "last words", spend_reserve=True)
+        # The reserve covers the cost; the wallet never sinks below
+        # balance-at-death minus the escrow.
+        self.assertGreaterEqual(led.balance(), floor - 1e-9)
+
+    def test_too_poor_for_last_words_raises(self):
+        led = Ledger(tmp_db(), starting_stake=1.0)
+        led.debit(led.balance() + led.reserve, 10, 10, "m", "beyond broke")
+        with self.assertRaises(Insolvent):
+            Brain(led).think([{"role": "user", "content": "epitaph"}],
+                             "last words", spend_reserve=True)
+
     def test_demo_mode_still_charges_the_ledger(self):
         led = Ledger(tmp_db(), starting_stake=5.0)
         before = led.balance()
@@ -196,8 +214,9 @@ class LifecycleTest(unittest.TestCase):
         self.assertEqual(len(agent.ledger.wills()), 1)
 
         agent.revive(5.0, "resurrection")
-        time.sleep(0.1)
         agent.alive = False  # stop the background loop
+        if agent._thread is not None:
+            agent._thread.join(timeout=10)
         self.assertEqual(agent.ledger.gen, 2)
         self.assertIn("generation 2", agent._system())
 
@@ -205,7 +224,7 @@ class LifecycleTest(unittest.TestCase):
         agent = Agent(stake=5.0, cycle_seconds=3600, db_path=tmp_db())
         agent.revive(1.0, "tip")
         self.assertEqual(agent.ledger.gen, 1)
-        agent.alive = False
+        agent.alive = False  # no loop was started; nothing to join
 
 
 
