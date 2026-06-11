@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Monetize Compute</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #07090c; --panel: #0d1117; --line: #1b2330;
+    --text: #c9d4e3; --dim: #5b6b80; --green: #2bd576; --red: #ff4d5e; --amber: #f5b83d;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 14px/1.5 "SF Mono", ui-monospace, Menlo, monospace;
+    padding: 28px; max-width: 1060px; margin: 0 auto;
+  }
+  header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 22px; }
+  h1 { font-size: 17px; letter-spacing: .04em; font-weight: 600; }
+  h1 .dollar { color: var(--green); }
+  #pulse { color: var(--dim); font-size: 12px; }
+  #pulse.alive::before { content: "● "; color: var(--green); animation: beat 1.6s infinite; }
+  #pulse.dead::before { content: "● "; color: var(--red); }
+  @keyframes beat { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
+
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
+  .card .label { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; }
+  .card .value { font-size: 26px; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .green { color: var(--green) } .red { color: var(--red) } .amber { color: var(--amber) }
+
+  .lifebar { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin-bottom: 12px; }
+  .lifebar .label { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; margin-bottom: 8px; }
+  .bar { height: 10px; background: #11161f; border-radius: 5px; overflow: hidden; }
+  .bar > div { height: 100%; background: linear-gradient(90deg, var(--red), var(--amber) 35%, var(--green) 70%); transition: width .8s; }
+
+  .cols { display: grid; grid-template-columns: 3fr 2fr; gap: 12px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; min-height: 320px; }
+  .panel h2 { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .1em; margin-bottom: 10px; }
+  .feed { font-size: 12.5px; max-height: 420px; overflow-y: auto; }
+  .feed div { padding: 3px 0; border-bottom: 1px solid #0f1520; }
+  .feed .t { color: var(--dim); margin-right: 8px; }
+  .k { display: inline-block; min-width: 64px; margin-right: 8px; font-weight: 600; }
+  .k-vitals { color: var(--dim) } .k-hunt { color: #5ab0ff } .k-pursue { color: var(--amber) }
+  .k-booked { color: var(--amber) } .k-banked { color: var(--green) } .k-death { color: var(--red) }
+  .k-birth, .k-revival { color: var(--green) } .k-error { color: var(--red) }
+  .k-pass, .k-hands, .k-work { color: var(--text) }
+  .ledger div { display: flex; justify-content: space-between; font-size: 12.5px; padding: 3px 0; border-bottom: 1px solid #0f1520; }
+  .ledger .memo { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 70%; }
+  footer { margin-top: 18px; color: var(--dim); font-size: 11.5px; }
+  #dead-banner { display: none; background: #2a0d12; border: 1px solid var(--red); color: var(--red);
+    border-radius: 8px; padding: 12px 16px; margin-bottom: 12px; font-weight: 600; }
+</style>
+</head>
+<body>
+<header>
+  <h1>MONETIZE COMPUTE <span class="dollar">$</span> the agent that pays for its own inference</h1>
+  <span id="pulse" class="alive">starting</span>
+</header>
+
+<div id="dead-banner">FLATLINE. The agent ran out of money and can no longer think. Revenue is the only revival.</div>
+
+<div class="lifebar">
+  <div class="label">Wallet (life bar) <span id="bal-label"></span></div>
+  <div class="bar"><div id="bar" style="width:100%"></div></div>
+</div>
+
+<div class="grid">
+  <div class="card"><div class="label">Net P&amp;L</div><div class="value" id="net">$0.00</div></div>
+  <div class="card"><div class="label">Banked (cash)</div><div class="value green" id="banked">$0.00</div></div>
+  <div class="card"><div class="label">Booked (pending)</div><div class="value amber" id="booked">$0.00</div></div>
+  <div class="card"><div class="label">Rev / 1M tokens</div><div class="value" id="rpm">$0.00</div></div>
+</div>
+<div class="grid">
+  <div class="card"><div class="label">Inference spend</div><div class="value red" id="spent">$0.00</div></div>
+  <div class="card"><div class="label">Tokens burned</div><div class="value" id="tokens">0</div></div>
+  <div class="card"><div class="label">Brain calls</div><div class="value" id="calls">0</div></div>
+  <div class="card"><div class="label">Cycle</div><div class="value" id="cycle">0</div></div>
+</div>
+
+<div class="cols">
+  <div class="panel"><h2>Live feed</h2><div class="feed" id="feed"></div></div>
+  <div class="panel"><h2>Ledger</h2><div class="ledger" id="ledger"></div></div>
+</div>
+
+<footer id="modes">OpenClaw runtime · Nebius inference · Tavily search · Composio hands</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+const usd = n => {
+  const a = Math.abs(n);
+  return (n < 0 ? "-$" : "$") + (a > 0 && a < 0.01 ? a.toFixed(4) : a.toFixed(2));
+};
+const hhmm = ts => new Date(ts * 1000).toTimeString().slice(0, 8);
+
+async function tick() {
+  try {
+    const s = await (await fetch("/api/status")).json();
+    $("net").textContent = usd(s.net);
+    $("net").className = "value " + (s.net >= 0 ? "green" : "red");
+    $("banked").textContent = usd(s.banked);
+    $("booked").textContent = usd(s.booked);
+    $("spent").textContent = usd(s.spent);
+    $("rpm").textContent = usd(s.rev_per_mtok);
+    $("tokens").textContent = s.tokens.toLocaleString();
+    $("calls").textContent = s.calls;
+    $("cycle").textContent = s.cycle;
+    $("bal-label").textContent = `${usd(s.balance)} of ${usd(s.starting_stake)} stake`;
+    $("bar").style.width = Math.max(0, Math.min(100, s.balance / s.starting_stake * 100)) + "%";
+    $("pulse").className = s.alive ? "alive" : "dead";
+    $("pulse").textContent = s.alive ? "alive" : "dead";
+    $("dead-banner").style.display = s.alive ? "none" : "block";
+    $("modes").textContent =
+      `OpenClaw runtime · Nebius inference ${s.live_brain ? "LIVE" : "demo"}` +
+      ` · Tavily search ${s.live_scout ? "LIVE" : "demo"}` +
+      ` · Composio hands ${s.live_hands ? "LIVE" : "demo"}`;
+
+    const f = await (await fetch("/api/feed")).json();
+    $("feed").innerHTML = f.events.map(e =>
+      `<div><span class="t">${hhmm(e.ts)}</span><span class="k k-${e.kind}">${e.kind}</span>${esc(e.text)}</div>`
+    ).join("");
+    $("ledger").innerHTML = f.ledger.map(l => {
+      const sign = l.kind === "debit" ? "-" : "+";
+      const cls = l.kind === "debit" ? "red" : (l.kind === "banked" ? "green" : "amber");
+      return `<div><span class="memo">${esc(l.memo || l.kind)}</span><span class="${cls}">${sign}${usd(l.amount_usd).replace("$","$")}</span></div>`;
+    }).join("");
+  } catch (e) { /* server restarting */ }
+}
+const esc = s => String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+tick(); setInterval(tick, 2000);
+</script>
+</body>
+</html>
