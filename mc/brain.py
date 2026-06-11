@@ -16,8 +16,8 @@ import urllib.request
 NEBIUS_BASE = os.environ.get("NEBIUS_BASE_URL", "https://api.studio.nebius.com/v1")
 
 # (model, USD per 1M input tokens, USD per 1M output tokens, max_tokens cap)
-# Prices are placeholders; set real numbers from the Nebius pricing page in
-# .env before a live run.
+# Defaults match published Nebius per-token pricing as of June 2026.
+# Override in .env if they drift; the ledger is only as honest as these.
 LADDER = {
     "rich": (
         os.environ.get("MC_MODEL_RICH", "Qwen/Qwen3-235B-A22B"),

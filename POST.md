@@ -1,14 +1,33 @@
 # Application post draft (X)
 
-Post with a 15 second screen recording: wallet ticking down, hunger state,
-a death, the epitaph, the graveyard. Dawson posts this personally; nothing
-here auto-sends.
+Post with the demo GIF (docs/demo.gif) or a 15 second screen recording:
+wallet ticking down, hunger downgrade, the flatline, the epitaph, the
+resurrection. Dawson posts this personally; nothing here auto-sends.
 
----
+Before posting, verify all five handles in the X compose box. The event page
+says @ship_builders @nebiusai @composio @tavilyai @openclaw; if any of them
+resolves to the wrong account (check @composio in particular), that sponsor's
+judges never see the post.
+
+## Main post (recommended)
+
+Every agent demo burns someone else's credits and calls it the future. Mine
+has a wallet.
+
+$5 stake, real Nebius per-token costs, pays for every thought up front, dies
+at zero. It hunts real bounties to stay alive, thinks smaller as it gets
+poorer, and writes its own epitaph with its last escrowed cents. Its will
+passes to the next generation.
+
+@ship_builders @nebiusai @composio @tavilyai @openclaw
+
+https://github.com/monetizecompute/monetizecomputehackathon
+
+## Long version (first reply in the thread, or submission-form text)
 
 I gave an agent $5 and a rule: every token it thinks costs real money from
-its own wallet, at real Nebius per-token rates. It cannot overdraw. When it
-can't afford the next thought, it dies.
+its own wallet, at real Nebius per-token rates. It pays for every thought up
+front. When it can't afford the next one, it dies.
 
 So it hunts paid work to stay alive: real cash bounties via Tavily, executed
 via Composio, priced net of platform fees before it spends a token chasing
@@ -27,21 +46,4 @@ actually work.
 
 Monetize Compute: the agent that pays for its own inference.
 
-@openclaw runtime · @nebiusai is the bank account · @tavilyai hunts ·
-@composio executes · @ship_builders
-
-https://github.com/monetizecompute/monetizecomputehackathon
-
----
-
-Alt shorter version:
-
-Every agent demo burns someone else's credits and calls it the future. Mine
-has a wallet. $5 stake, real Nebius per-token costs, can't overdraw, dies at
-zero. It hunts real bounties to stay alive, thinks smaller as it gets poorer,
-and writes its own epitaph with its last escrowed cents. Its will passes to
-the next generation.
-
-@ship_builders @nebiusai @composio @tavilyai @openclaw
-
-https://github.com/monetizecompute/monetizecomputehackathon
+Runtime @openclaw. Bank account @nebiusai. @tavilyai hunts. @composio executes.

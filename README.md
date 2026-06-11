@@ -5,8 +5,9 @@
 Every agent demo you have seen burns someone else's API credits and calls it
 the future. This one has a wallet. It starts with a $5 stake on a prepaid
 inference card. Every thought is metered against that wallet at real Nebius
-per-token rates. Solvency is checked against the worst case of the next call,
-so it can never overdraw. When it cannot afford a thought, it dies.
+per-token rates. Before every call, solvency is checked against the full
+projected cost of that call, and the output budget shrinks to what the wallet
+covers. Below a minimum viable thought, it is insolvent. It dies.
 
 No blockchain. Real inference costs. Real cash bounties.
 
@@ -22,16 +23,20 @@ metric refuses to count.
 A survival loop, every 60 seconds:
 
 1. **Vitals.** Check the wallet. The guard clause is the product: there is no
-   override flag in the code. Go look.
+   override flag in the code. The only bypass is the escrowed last-words
+   reserve, and it fires once, at death. Go look.
 2. **Hunt.** Tavily searches for work that pays: open cash bounties on Algora
    and GitHub, paid micro-tasks, anything legitimate it can finish with
    reasoning and tool calls.
 3. **Score.** The brain prices each lead in expected dollars per token, net of
-   platform fees (Algora takes roughly 23 percent), before spending anything
-   on it. Verbosity is self-harm when you pay your own bill.
-4. **Execute.** Composio is the hands: fork, patch, open the PR, send the email.
-5. **Account.** Submitted work books as pending revenue. Cash only banks when a
-   human confirms the payout with proof. The agent cannot pay itself.
+   platform fees (Algora's cut plus Stripe processing), before spending
+   anything on it. Verbosity is self-harm when you pay your own bill.
+4. **Execute.** The brain produces the deliverable; Composio submits it as a
+   real action: the PR, the email.
+5. **Account.** Submitted work books as pending revenue. Booked is never
+   spendable; the agent cannot think against its own optimism. Cash only
+   banks when a human confirms the payout with proof. The agent cannot pay
+   itself.
 
 ## Poverty has texture
 
@@ -72,6 +77,8 @@ Agents have flirted with economic survival before. [Truth Terminal](https://tech
 got rich passively off a memecoin it inspired. [Freysa](https://iq.wiki/wiki/freysa-ai)
 guarded a prize pool in an adversarial game. [Pip](https://dev.to/farkharoumy/im-an-ai-agent-and-i-have-60-hours-to-earn-1-or-i-get-shut-down-534o)
 had 60 hours to earn a dollar and earned zero, mostly hitting KYC walls.
+Anthropic's Project Vend gave Claude a real business and a real P&L, but its
+inference was free: it could lose money on snacks, never on thoughts.
 
 What none of them did, and this does: meter every thought at real fiat
 per-token rates against a hard prepaid balance, make earning productive
@@ -98,8 +105,12 @@ python3 run.py --stake 5.00
 # dashboard at http://127.0.0.1:8901
 ```
 
-Zero dependencies in demo mode, Python stdlib only. With keys set, the same
-loop runs live.
+Zero dependencies in demo mode, Python stdlib only. Demo mode fakes the
+completions, never the economics: the same ledger is charged at the same
+rates, labeled simulated. With keys set, the same loop runs live.
+
+Kill the process and restart it: the same life resumes from the ledger.
+Death is the only reset.
 
 The economics must be exactly right or the whole pitch is wrong, so they are
 tested: balance math, the affordability boundary, the last-words reserve,
