@@ -46,6 +46,7 @@ class Scout:
         with urllib.request.urlopen(req, timeout=60) as resp:
             data = json.loads(resp.read())
         return [
-            {"title": r.get("title"), "url": r.get("url"), "content": r.get("content", "")[:500]}
-            for r in data.get("results", [])
+            {"title": r.get("title") or "", "url": r.get("url") or "",
+             "content": (r.get("content") or "")[:500]}
+            for r in data.get("results") or []
         ]

@@ -5,8 +5,12 @@ SQLite, append-only. Three kinds of entries:
   banked  - confirmed cash in (a paid bounty, a tip, a sale)
   booked  - committed-but-unpaid revenue (a submitted bounty PR awaiting payout)
 
-Balance = starting stake + banked - debits. Booked is reported separately and
-never spendable. The agent can only think against money it actually has.
+Balance = stake + banked - debits - the last-words reserve. The reserve is a
+few cents escrowed outside spendable balance so a dying agent can afford its
+own epitaph. The agent can only think against money it actually has.
+
+Lives are generations. Each life gets the same stake and dies alone, but its
+will carries forward. Money does not survive death. Knowledge does.
 """
 
 import sqlite3
@@ -20,6 +24,7 @@ _SCHEMA = """
 CREATE TABLE IF NOT EXISTS entries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts REAL NOT NULL,
+    gen INTEGER NOT NULL DEFAULT 1,
     kind TEXT NOT NULL CHECK (kind IN ('debit', 'banked', 'booked')),
     amount_usd REAL NOT NULL,
     tokens_in INTEGER DEFAULT 0,
@@ -28,24 +33,90 @@ CREATE TABLE IF NOT EXISTS entries (
     memo TEXT,
     proof_url TEXT
 );
+CREATE TABLE IF NOT EXISTS lives (
+    gen INTEGER PRIMARY KEY,
+    born_ts REAL NOT NULL,
+    died_ts REAL,
+    cause TEXT,
+    epitaph TEXT,
+    will TEXT
+);
 """
 
 
 class Ledger:
-    def __init__(self, db_path: Path = DB_PATH, starting_stake: float = 5.0):
+    def __init__(self, db_path: Path = DB_PATH, starting_stake: float = 5.0,
+                 reserve: float = 0.05):
         self.starting_stake = starting_stake
+        # Last-words escrow can never exceed a tenth of the stake; a tiny
+        # stake should buy a short life, not a stillbirth.
+        self.reserve = min(reserve, starting_stake / 10)
         self._lock = threading.Lock()
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
-        self._conn.execute(_SCHEMA)
+        self._conn.executescript(_SCHEMA)
         self._conn.commit()
+        self.gen = self._resume_or_start_life()
 
-    def _add(self, kind, amount, tokens_in=0, tokens_out=0, model=None, memo=None, proof_url=None):
+    # -- lives ------------------------------------------------------------
+
+    def _resume_or_start_life(self):
+        row = self._conn.execute(
+            "SELECT gen, died_ts FROM lives ORDER BY gen DESC LIMIT 1"
+        ).fetchone()
+        if row and row[1] is None:
+            return row[0]  # a life in progress; pick it back up
+        gen = (row[0] + 1) if row else 1
+        self._conn.execute(
+            "INSERT INTO lives (gen, born_ts) VALUES (?, ?)", (gen, time.time()))
+        self._conn.commit()
+        return gen
+
+    def begin_next_life(self):
+        with self._lock:
+            self.gen += 1
+            self._conn.execute(
+                "INSERT INTO lives (gen, born_ts) VALUES (?, ?)",
+                (self.gen, time.time()))
+            self._conn.commit()
+        return self.gen
+
+    def end_life(self, cause, epitaph=None, will=None):
         with self._lock:
             self._conn.execute(
-                "INSERT INTO entries (ts, kind, amount_usd, tokens_in, tokens_out, model, memo, proof_url)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (time.time(), kind, amount, tokens_in, tokens_out, model, memo, proof_url),
-            )
+                "UPDATE lives SET died_ts = ?, cause = ?, epitaph = ?, will = ?"
+                " WHERE gen = ?",
+                (time.time(), cause, epitaph, will, self.gen))
+            self._conn.commit()
+
+    def wills(self, limit=3):
+        rows = self._conn.execute(
+            "SELECT gen, will FROM lives WHERE will IS NOT NULL"
+            " ORDER BY gen DESC LIMIT ?", (limit,)).fetchall()
+        return [{"gen": g, "will": w} for g, w in rows][::-1]
+
+    def lives(self):
+        rows = self._conn.execute(
+            "SELECT l.gen, l.born_ts, l.died_ts, l.cause, l.epitaph,"
+            " COALESCE(SUM(CASE WHEN e.kind = 'debit'"
+            "   THEN e.tokens_in + e.tokens_out END), 0),"
+            " COALESCE(SUM(CASE WHEN e.kind = 'banked' THEN e.amount_usd END), 0)"
+            " - COALESCE(SUM(CASE WHEN e.kind = 'debit' THEN e.amount_usd END), 0)"
+            " FROM lives l LEFT JOIN entries e ON e.gen = l.gen"
+            " GROUP BY l.gen ORDER BY l.gen DESC").fetchall()
+        keys = ["gen", "born_ts", "died_ts", "cause", "epitaph", "tokens", "net"]
+        return [dict(zip(keys, r)) for r in rows]
+
+    # -- money ------------------------------------------------------------
+
+    def _add(self, kind, amount, tokens_in=0, tokens_out=0, model=None,
+             memo=None, proof_url=None):
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO entries (ts, gen, kind, amount_usd, tokens_in,"
+                " tokens_out, model, memo, proof_url)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (time.time(), self.gen, kind, amount, tokens_in, tokens_out,
+                 model, memo, proof_url))
             self._conn.commit()
 
     def debit(self, amount_usd, tokens_in, tokens_out, model, memo):
@@ -59,24 +130,30 @@ class Ledger:
 
     def _sum(self, kind):
         row = self._conn.execute(
-            "SELECT COALESCE(SUM(amount_usd), 0) FROM entries WHERE kind = ?", (kind,)
-        ).fetchone()
+            "SELECT COALESCE(SUM(amount_usd), 0) FROM entries"
+            " WHERE kind = ? AND gen = ?", (kind, self.gen)).fetchone()
         return row[0]
 
     def balance(self):
-        return self.starting_stake + self._sum("banked") - self._sum("debit")
+        """Spendable money this life: stake plus earnings, minus spend, minus
+        the escrowed last-words reserve."""
+        return (self.starting_stake - self.reserve
+                + self._sum("banked") - self._sum("debit"))
 
     def stats(self):
         spent = self._sum("debit")
         banked = self._sum("banked")
         booked = self._sum("booked")
         row = self._conn.execute(
-            "SELECT COALESCE(SUM(tokens_in + tokens_out), 0), COUNT(*) FROM entries WHERE kind = 'debit'"
-        ).fetchone()
+            "SELECT COALESCE(SUM(tokens_in + tokens_out), 0), COUNT(*)"
+            " FROM entries WHERE kind = 'debit' AND gen = ?",
+            (self.gen,)).fetchone()
         tokens, calls = row
         return {
+            "gen": self.gen,
             "starting_stake": self.starting_stake,
-            "balance": self.starting_stake + banked - spent,
+            "reserve": self.reserve,
+            "balance": self.starting_stake - self.reserve + banked - spent,
             "spent": spent,
             "banked": banked,
             "booked": booked,
@@ -89,9 +166,9 @@ class Ledger:
 
     def recent(self, limit=50):
         rows = self._conn.execute(
-            "SELECT ts, kind, amount_usd, tokens_in, tokens_out, model, memo, proof_url"
-            " FROM entries ORDER BY id DESC LIMIT ?",
-            (limit,),
-        ).fetchall()
-        keys = ["ts", "kind", "amount_usd", "tokens_in", "tokens_out", "model", "memo", "proof_url"]
+            "SELECT ts, gen, kind, amount_usd, tokens_in, tokens_out, model,"
+            " memo, proof_url FROM entries ORDER BY id DESC LIMIT ?",
+            (limit,)).fetchall()
+        keys = ["ts", "gen", "kind", "amount_usd", "tokens_in", "tokens_out",
+                "model", "memo", "proof_url"]
         return [dict(zip(keys, r)) for r in rows]

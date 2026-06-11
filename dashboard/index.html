@@ -47,6 +47,14 @@
   .k-pass, .k-hands, .k-work { color: var(--text) }
   .ledger div { display: flex; justify-content: space-between; font-size: 12.5px; padding: 3px 0; border-bottom: 1px solid #0f1520; }
   .ledger .memo { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 70%; }
+  .grave { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin-top: 12px; }
+  .grave h2 { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .1em; margin-bottom: 10px; }
+  .grave .life { padding: 8px 0; border-bottom: 1px solid #0f1520; font-size: 12.5px; }
+  .grave .life .row1 { display: flex; justify-content: space-between; }
+  .grave .epitaph { color: var(--dim); font-style: italic; margin-top: 2px; }
+  #hunger { font-size: 12px; margin-left: 10px; }
+  #hunger.rich { color: var(--green) } #hunger.hungry { color: var(--amber) }
+  #hunger.starving, #hunger.dead { color: var(--red) }
   footer { margin-top: 18px; color: var(--dim); font-size: 11.5px; }
   #dead-banner { display: none; background: #2a0d12; border: 1px solid var(--red); color: var(--red);
     border-radius: 8px; padding: 12px 16px; margin-bottom: 12px; font-weight: 600; }
@@ -55,10 +63,10 @@
 <body>
 <header>
   <h1>MONETIZE COMPUTE <span class="dollar">$</span> the agent that pays for its own inference</h1>
-  <span id="pulse" class="alive">starting</span>
+  <span><span id="gen" style="color:var(--dim);font-size:12px"></span><span id="hunger"></span> <span id="pulse" class="alive">starting</span></span>
 </header>
 
-<div id="dead-banner">FLATLINE. The agent ran out of money and can no longer think. Revenue is the only revival.</div>
+<div id="dead-banner">FLATLINE. The agent spent its last words and can no longer think. Banking real money starts the next generation.</div>
 
 <div class="lifebar">
   <div class="label">Wallet (life bar) <span id="bal-label"></span></div>
@@ -81,6 +89,11 @@
 <div class="cols">
   <div class="panel"><h2>Live feed</h2><div class="feed" id="feed"></div></div>
   <div class="panel"><h2>Ledger</h2><div class="ledger" id="ledger"></div></div>
+</div>
+
+<div class="grave" id="grave-panel" style="display:none">
+  <h2>Graveyard</h2>
+  <div id="graveyard"></div>
 </div>
 
 <footer id="modes">OpenClaw runtime · Nebius inference · Tavily search · Composio hands</footer>
@@ -109,6 +122,9 @@ async function tick() {
     $("bar").style.width = Math.max(0, Math.min(100, s.balance / s.starting_stake * 100)) + "%";
     $("pulse").className = s.alive ? "alive" : "dead";
     $("pulse").textContent = s.alive ? "alive" : "dead";
+    $("gen").textContent = `gen ${s.gen}`;
+    $("hunger").textContent = s.hunger;
+    $("hunger").className = s.hunger;
     $("dead-banner").style.display = s.alive ? "none" : "block";
     $("modes").textContent =
       `OpenClaw runtime · Nebius inference ${s.live_brain ? "LIVE" : "demo"}` +
@@ -122,7 +138,17 @@ async function tick() {
     $("ledger").innerHTML = f.ledger.map(l => {
       const sign = l.kind === "debit" ? "-" : "+";
       const cls = l.kind === "debit" ? "red" : (l.kind === "banked" ? "green" : "amber");
-      return `<div><span class="memo">${esc(l.memo || l.kind)}</span><span class="${cls}">${sign}${usd(l.amount_usd).replace("$","$")}</span></div>`;
+      return `<div><span class="memo">${esc(l.memo || l.kind)}</span><span class="${cls}">${sign}${usd(l.amount_usd)}</span></div>`;
+    }).join("");
+
+    const dead = f.graveyard.filter(g => g.died_ts);
+    $("grave-panel").style.display = dead.length ? "block" : "none";
+    $("graveyard").innerHTML = dead.map(g => {
+      const mins = Math.round((g.died_ts - g.born_ts) / 60);
+      return `<div class="life">
+        <div class="row1"><span>gen ${g.gen} · lived ${mins} min · ${g.tokens.toLocaleString()} tokens · net <span class="${g.net >= 0 ? "green" : "red"}">${usd(g.net)}</span></span><span style="color:var(--dim)">${esc(g.cause || "")}</span></div>
+        ${g.epitaph ? `<div class="epitaph">"${esc(g.epitaph)}"</div>` : ""}
+      </div>`;
     }).join("");
   } catch (e) { /* server restarting */ }
 }

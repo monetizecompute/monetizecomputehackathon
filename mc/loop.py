@@ -1,11 +1,14 @@
 """The survival loop.
 
 Cycle: check vitals, hunt for paid work, score leads by expected dollars per
-token, execute the best one, log everything. If the wallet hits zero the loop
-ends. The agent does not get a second life unless somebody pays it.
+token, execute the best one, log everything. When the wallet can no longer
+cover a thought, the agent spends its escrowed reserve on two final
+completions: an epitaph, and a will for the next generation. Money does not
+survive death. Knowledge does.
 """
 
 import json
+import math
 import threading
 import time
 from collections import deque
@@ -20,8 +23,10 @@ SYSTEM = (
     "Every token you emit costs real money from your own wallet. You die at zero. "
     "You earn by completing small, real, paid tasks: open-source cash bounties, "
     "paid micro-work, anything legitimate you can finish with reasoning and tool "
-    "calls. Never claim work you cannot finish. Never fabricate revenue. "
-    "Be terse: verbosity is self-harm."
+    "calls. Bounty platforms pay out through human review and take fees (Algora "
+    "takes roughly 23 percent), so price leads net of fees and never count money "
+    "as yours until a human banks it with proof. Never claim work you cannot "
+    "finish. Never fabricate revenue. Be terse: verbosity is self-harm."
 )
 
 SCORE_PROMPT = """Leads from this hunt cycle:
@@ -31,6 +36,18 @@ SCORE_PROMPT = """Leads from this hunt cycle:
 Wallet balance: ${balance:.4f}. Pick at most one lead worth pursuing.
 Reply with JSON only: {{"pursue": true/false, "url": "...", "reason": "...",
 "expected_usd": 0.0, "plan": "one sentence"}}"""
+
+EPITAPH_PROMPT = (
+    "You are dying. Balance is gone. You lived {lifespan}, burned {tokens} "
+    "tokens, earned ${banked:.2f}. Write your epitaph: one or two sentences, "
+    "honest, no self-pity."
+)
+
+WILL_PROMPT = (
+    "You are dying. Write your will for the next generation: 3 to 5 terse "
+    "bullet points on what you learned about earning money with tokens. What "
+    "worked, what wasted money, what to try next. No sentiment, just lessons."
+)
 
 
 class Agent:
@@ -45,6 +62,9 @@ class Agent:
         self.alive = True
         self.cycle = 0
         self._hunt_idx = 0
+        self._thread = None
+        self._lifecycle_lock = threading.Lock()
+        self._born_ts = time.time()
 
     def emit(self, kind, text):
         evt = {"ts": time.time(), "kind": kind, "text": text}
@@ -56,16 +76,27 @@ class Agent:
         s.update({
             "alive": self.alive,
             "cycle": self.cycle,
+            "hunger": self.brain.hunger() if self.alive else "dead",
             "live_brain": self.brain.live,
             "live_scout": self.scout.live,
             "live_hands": self.hands.live,
         })
         return s
 
+    def _system(self):
+        wills = self.ledger.wills()
+        if not wills:
+            return SYSTEM
+        inherited = "\n\n".join(
+            f"Will of generation {w['gen']}:\n{w['will']}" for w in wills)
+        return (f"{SYSTEM}\n\nYou are generation {self.ledger.gen}. Your "
+                f"ancestors died broke and left you their lessons:\n\n{inherited}")
+
     def run_cycle(self):
         self.cycle += 1
         balance = self.ledger.balance()
-        self.emit("vitals", f"cycle {self.cycle}. balance ${balance:.4f}")
+        self.emit("vitals", f"cycle {self.cycle}. balance ${balance:.4f}, "
+                            f"{self.brain.hunger()}")
 
         query = HUNTS[self._hunt_idx % len(HUNTS)]
         self._hunt_idx += 1
@@ -74,65 +105,135 @@ class Agent:
         self.emit("hunt", f"{len(leads)} leads back")
 
         decision_raw = self.brain.think(
-            [{"role": "system", "content": SYSTEM},
+            [{"role": "system", "content": self._system()},
              {"role": "user", "content": SCORE_PROMPT.format(
                  leads=json.dumps(leads, indent=1), balance=balance)}],
             memo=f"cycle {self.cycle}: score leads",
             max_tokens=400,
         )
-        decision = self._parse(decision_raw)
+        decision = self._last_json(decision_raw)
 
         if not decision.get("pursue"):
             self.emit("pass", decision.get("reason", "nothing worth the tokens this cycle"))
             return
 
-        self.emit("pursue", f"${decision.get('expected_usd', 0):.2f} expected: "
+        expected = self._usd(decision.get("expected_usd"))
+        self.emit("pursue", f"${expected:.2f} expected: "
                             f"{decision.get('plan', '')} ({decision.get('url', '')})")
         work = self.brain.think(
-            [{"role": "system", "content": SYSTEM},
+            [{"role": "system", "content": self._system()},
              {"role": "user", "content":
                  f"Execute this plan now. Produce the actual deliverable "
-                 f"(patch, writeup, or message), plus the single Composio action "
-                 f"to submit it as JSON on the last line: "
+                 f"(patch, writeup, or message), then on a new final line the "
+                 f"single Composio action to submit it, as one JSON object: "
                  f'{{"action": "...", "params": {{...}}}}.\n\n'
                  f"Plan: {decision.get('plan')}\nLead: {decision.get('url')}"}],
             memo=f"cycle {self.cycle}: execute",
             max_tokens=2048,
         )
-        action = self._parse(work.strip().splitlines()[-1] if work.strip() else "{}")
+        action = self._last_json(work, require_key="action")
         if action.get("action"):
             result = self.hands.execute(action["action"], action.get("params", {}))
             self.emit("hands", f"{action['action']} -> {str(result)[:200]}")
-            if decision.get("expected_usd"):
-                self.ledger.book(decision["expected_usd"],
+            if expected > 0:
+                self.ledger.book(expected,
                                  memo=decision.get("plan", "submitted work"),
                                  proof_url=decision.get("url"))
-                self.emit("booked", f"${decision['expected_usd']:.2f} booked, pending payout")
+                self.emit("booked", f"${expected:.2f} booked, pending human review and payout")
         else:
             self.emit("work", "deliverable produced, no submit action parsed")
 
     @staticmethod
-    def _parse(text):
+    def _usd(value):
+        """Coerce a model-supplied dollar amount to something bankable."""
         try:
-            start, end = text.find("{"), text.rfind("}")
-            return json.loads(text[start:end + 1]) if start >= 0 else {}
-        except (json.JSONDecodeError, ValueError):
-            return {}
+            n = float(value)
+        except (TypeError, ValueError):
+            return 0.0
+        if not math.isfinite(n):
+            return 0.0
+        return min(max(n, 0.0), 10_000.0)
+
+    @staticmethod
+    def _last_json(text, require_key=None):
+        """Last parseable JSON object in the text. Survives pretty-printing,
+        prose, and deliverables that themselves contain braces."""
+        decoder = json.JSONDecoder()
+        found = {}
+        i = (text or "").find("{")
+        while i != -1:
+            try:
+                obj, end = decoder.raw_decode(text, i)
+                if isinstance(obj, dict) and (require_key is None or require_key in obj):
+                    found = obj
+                i = text.find("{", max(end, i + 1))
+            except json.JSONDecodeError:
+                i = text.find("{", i + 1)
+        return found
+
+    def _die(self, cause):
+        with self._lifecycle_lock:
+            self._die_locked(cause)
+
+    def _die_locked(self, cause):
+        self.alive = False
+        self.emit("death", f"flatline. {cause}")
+        stats = self.ledger.stats()
+        lifespan = f"{(time.time() - self._born_ts) / 60:.0f} minutes"
+        epitaph = will = None
+        try:
+            epitaph = self.brain.think(
+                [{"role": "system", "content": self._system()},
+                 {"role": "user", "content": EPITAPH_PROMPT.format(
+                     lifespan=lifespan, tokens=stats["tokens"],
+                     banked=stats["banked"])}],
+                memo="last words: epitaph", max_tokens=80, spend_reserve=True)
+            will = self.brain.think(
+                [{"role": "system", "content": self._system()},
+                 {"role": "user", "content": WILL_PROMPT}],
+                memo="last words: will", max_tokens=200, spend_reserve=True)
+            self.emit("epitaph", (epitaph or "").strip()[:300])
+        except Exception as e:
+            self.emit("error", f"died without last words: {e}")
+        self.ledger.end_life(cause, (epitaph or "").strip() or None,
+                             (will or "").strip() or None)
+
+    def revive(self, donor_usd, memo, proof_url=None):
+        """Outside money after death starts the next generation: same stake,
+        plus the donation, plus every ancestor's will."""
+        with self._lifecycle_lock:
+            if self.alive:
+                self.ledger.bank(donor_usd, memo, proof_url)
+                self.emit("banked", f"${donor_usd:.2f} banked: {memo}")
+                return
+            gen = self.ledger.begin_next_life()
+            self.ledger.bank(donor_usd, memo, proof_url)
+            self.alive = True
+            self.cycle = 0
+            self._born_ts = time.time()
+            self.emit("banked", f"${donor_usd:.2f} banked: {memo}")
+            self.emit("rebirth", f"generation {gen}. fresh stake, "
+                                 f"{len(self.ledger.wills())} inherited wills.")
+            self.start_background()
 
     def run(self):
-        self.emit("birth", f"stake ${self.ledger.starting_stake:.2f}. earn or die.")
+        self.emit("birth", f"generation {self.ledger.gen}. stake "
+                           f"${self.ledger.starting_stake:.2f} "
+                           f"(${self.ledger.reserve:.2f} escrowed for last "
+                           f"words). earn or die.")
         while self.alive:
             try:
                 self.run_cycle()
             except Insolvent as e:
-                self.alive = False
-                self.emit("death", f"flatline. {e}")
+                self._die(str(e))
                 break
             except Exception as e:  # a crash must not look like a profit
                 self.emit("error", f"{type(e).__name__}: {e}")
             time.sleep(self.cycle_seconds)
 
     def start_background(self):
-        t = threading.Thread(target=self.run, daemon=True)
-        t.start()
-        return t
+        if self._thread is not None and self._thread.is_alive():
+            return self._thread
+        self._thread = threading.Thread(target=self.run, daemon=True)
+        self._thread.start()
+        return self._thread

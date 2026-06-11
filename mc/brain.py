@@ -2,6 +2,11 @@
 
 The whole product is in the guard clause. If the wallet is empty the agent
 cannot think. There is no override flag. Revenue is the only way back.
+
+Poverty has texture here. The model ladder follows the wallet: rich gets the
+big model and long thoughts, hungry gets a mid model on a tighter token
+budget, starving gets the cheapest model and rations. The agent literally
+thinks smaller as it gets poorer.
 """
 
 import json
@@ -9,16 +14,48 @@ import os
 import urllib.request
 
 NEBIUS_BASE = os.environ.get("NEBIUS_BASE_URL", "https://api.studio.nebius.com/v1")
-MODEL = os.environ.get("MC_MODEL", "Qwen/Qwen3-235B-A22B")
 
-# USD per million tokens. Defaults are placeholders; set the real numbers for
-# your model from the Nebius pricing page before a live run.
-PRICE_IN = float(os.environ.get("MC_PRICE_IN_PER_MTOK", "0.20"))
-PRICE_OUT = float(os.environ.get("MC_PRICE_OUT_PER_MTOK", "0.60"))
+# (model, USD per 1M input tokens, USD per 1M output tokens, max_tokens cap)
+# Prices are placeholders; set real numbers from the Nebius pricing page in
+# .env before a live run.
+LADDER = {
+    "rich": (
+        os.environ.get("MC_MODEL_RICH", "Qwen/Qwen3-235B-A22B"),
+        float(os.environ.get("MC_PRICE_RICH_IN", "0.20")),
+        float(os.environ.get("MC_PRICE_RICH_OUT", "0.60")),
+        2048,
+    ),
+    "hungry": (
+        os.environ.get("MC_MODEL_HUNGRY", "Qwen/Qwen3-30B-A3B"),
+        float(os.environ.get("MC_PRICE_HUNGRY_IN", "0.10")),
+        float(os.environ.get("MC_PRICE_HUNGRY_OUT", "0.30")),
+        1024,
+    ),
+    "starving": (
+        os.environ.get("MC_MODEL_STARVING", "meta-llama/Llama-3.1-8B-Instruct"),
+        float(os.environ.get("MC_PRICE_STARVING_IN", "0.02")),
+        float(os.environ.get("MC_PRICE_STARVING_OUT", "0.06")),
+        512,
+    ),
+}
+
+RATIONS = (
+    "\n\nYou are poor right now. Answer in as few tokens as you can get away "
+    "with. Every word you emit shortens your life."
+)
 
 
 class Insolvent(Exception):
     """Raised when the agent tries to think with an empty wallet."""
+
+
+def hunger_state(balance, stake):
+    ratio = balance / stake if stake > 0 else 0
+    if ratio > 0.6:
+        return "rich"
+    if ratio > 0.2:
+        return "hungry"
+    return "starving"
 
 
 class Brain:
@@ -30,16 +67,48 @@ class Brain:
     def live(self):
         return bool(self.api_key)
 
-    def think(self, messages, memo, max_tokens=2048):
+    def hunger(self):
+        return hunger_state(self.ledger.balance(), self.ledger.starting_stake)
+
+    def think(self, messages, memo, max_tokens=None, spend_reserve=False):
+        """One metered thought, paid for in advance.
+
+        Solvency is checked against the worst case cost of THIS call, not
+        just a positive balance, so the agent can never overdraw: if it
+        cannot afford the thought at full length, the token budget shrinks
+        to what the wallet covers, and below a minimum viable thought it is
+        insolvent. spend_reserve lets a dying agent use its escrowed
+        last-words money; everything else stops here.
+        """
         balance = self.ledger.balance()
-        if balance <= 0:
+        if balance <= 0 and not spend_reserve:
             raise Insolvent(f"balance ${balance:.4f}. No money, no thoughts.")
 
+        state = "starving" if spend_reserve else hunger_state(
+            balance, self.ledger.starting_stake)
+        model, price_in, price_out, cap = LADDER[state]
+        max_tokens = min(max_tokens or cap, cap)
+
+        if not spend_reserve:
+            est_in = sum(len(m.get("content", "")) // 4 for m in messages) + 64
+            affordable_out = (balance - est_in / 1e6 * price_in) * 1e6 / price_out
+            if affordable_out < 64:
+                raise Insolvent(
+                    f"balance ${balance:.4f} cannot cover the next thought.")
+            max_tokens = int(min(max_tokens, affordable_out))
+
+        if state == "starving" and messages and messages[0]["role"] == "system":
+            messages = [
+                {"role": "system", "content": messages[0]["content"] + RATIONS},
+                *messages[1:],
+            ]
+
+        memo = f"[{state}] {memo}"
         if not self.live:
-            return self._simulate(messages, memo)
+            return self._simulate(messages, memo, model, price_in, price_out)
 
         body = json.dumps({
-            "model": MODEL,
+            "model": model,
             "messages": messages,
             "max_tokens": max_tokens,
         }).encode()
@@ -54,19 +123,25 @@ class Brain:
         with urllib.request.urlopen(req, timeout=120) as resp:
             data = json.loads(resp.read())
 
-        usage = data.get("usage", {})
-        tin = usage.get("prompt_tokens", 0)
-        tout = usage.get("completion_tokens", 0)
-        cost = tin / 1e6 * PRICE_IN + tout / 1e6 * PRICE_OUT
-        self.ledger.debit(cost, tin, tout, MODEL, memo)
+        usage = data.get("usage") or {}
+        tin = usage.get("prompt_tokens")
+        tout = usage.get("completion_tokens")
+        if tin is None or tout is None:
+            # A response with no usage block must never meter at zero. Charge
+            # a conservative estimate and say so in the ledger.
+            tin = tin or sum(len(m.get("content", "")) // 4 for m in messages)
+            tout = tout or max_tokens
+            memo += " (usage estimated)"
+        cost = tin / 1e6 * price_in + tout / 1e6 * price_out
+        self.ledger.debit(cost, tin, tout, model, memo)
         return data["choices"][0]["message"]["content"]
 
-    def _simulate(self, messages, memo):
+    def _simulate(self, messages, memo, model, price_in, price_out):
         # Demo mode: no key yet. Charge realistic token counts against the
         # ledger anyway so the economics on the dashboard are real, and label
         # the spend as simulated so nothing is misrepresented.
         tin = sum(len(m.get("content", "")) // 4 for m in messages)
         tout = 350
-        cost = tin / 1e6 * PRICE_IN + tout / 1e6 * PRICE_OUT
-        self.ledger.debit(cost, tin, tout, f"{MODEL} (simulated)", memo)
+        cost = tin / 1e6 * price_in + tout / 1e6 * price_out
+        self.ledger.debit(cost, tin, tout, f"{model} (simulated)", memo)
         return "[simulated response: set NEBIUS_API_KEY for live inference]"
