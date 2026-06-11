@@ -47,7 +47,7 @@
   .k-pass, .k-hands, .k-work { color: var(--text) }
   .ledger div { display: flex; justify-content: space-between; font-size: 12.5px; padding: 3px 0; border-bottom: 1px solid #0f1520; }
   .ledger .memo { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 70%; }
-  .grave { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin-top: 12px; }
+  .grave { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin-bottom: 12px; }
   .grave h2 { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .1em; margin-bottom: 10px; }
   .grave .life { padding: 8px 0; border-bottom: 1px solid #0f1520; font-size: 12.5px; }
   .grave .life .row1 { display: flex; justify-content: space-between; }
@@ -86,14 +86,14 @@
   <div class="card"><div class="label">Cycle</div><div class="value" id="cycle">0</div></div>
 </div>
 
-<div class="cols">
-  <div class="panel"><h2>Live feed</h2><div class="feed" id="feed"></div></div>
-  <div class="panel"><h2>Ledger</h2><div class="ledger" id="ledger"></div></div>
-</div>
-
 <div class="grave" id="grave-panel" style="display:none">
   <h2>Graveyard</h2>
   <div id="graveyard"></div>
+</div>
+
+<div class="cols">
+  <div class="panel"><h2>Live feed</h2><div class="feed" id="feed"></div></div>
+  <div class="panel"><h2>Ledger</h2><div class="ledger" id="ledger"></div></div>
 </div>
 
 <footer id="modes">OpenClaw runtime · Nebius inference · Tavily search · Composio hands</footer>

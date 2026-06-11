@@ -10,6 +10,8 @@ so it can never overdraw. When it cannot afford a thought, it dies.
 
 No blockchain. Real inference costs. Real cash bounties.
 
+![Dashboard: generation 2, alive, with generation 1 in the graveyard](docs/dashboard.png)
+
 ## How it survives
 
 A survival loop, every 60 seconds:
@@ -44,6 +46,12 @@ money with tokens. Both go in the graveyard, on the dashboard, permanently.
 Banking real money into a dead agent starts the next generation. Same $5
 stake, zero inherited wealth, every ancestor's will in its system prompt.
 Money does not survive death. Knowledge does.
+
+![Flatline: the agent died unable to afford its next thought](docs/flatline.png)
+
+That flatline is real. Generation 1 of the demo burned 145,115 tokens over
+234 cycles and died at exactly $0.0000, cause of death: "balance $0.0000
+cannot cover the next thought."
 
 ## The economics are the interface
 
@@ -84,6 +92,14 @@ python3 run.py --stake 5.00
 
 Zero dependencies in demo mode, Python stdlib only. With keys set, the same
 loop runs live.
+
+The economics must be exactly right or the whole pitch is wrong, so they are
+tested: balance math, the affordability boundary, the last-words reserve,
+generation-scoped books, and the exploit guards on the bank endpoint.
+
+```bash
+python3 -m unittest discover tests
+```
 
 Confirm a real payout, or resurrect a dead agent (the only ways money enters):
 
