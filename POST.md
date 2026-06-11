@@ -4,10 +4,10 @@ Post with the demo GIF (docs/demo.gif) or a 15 second screen recording:
 wallet ticking down, hunger downgrade, the flatline, the epitaph, the
 resurrection. Dawson posts this personally; nothing here auto-sends.
 
-Before posting, verify all five handles in the X compose box. The event page
-says @ship_builders @nebiusai @composio @tavilyai @openclaw; if any of them
-resolves to the wrong account (check @composio in particular), that sponsor's
-judges never see the post.
+Handles: the event page says @ship_builders @nebiusai @composio @tavilyai
+@openclaw. Verified June 10: @composio is a real Composio account (bio links
+composio.dev); @composiohq also exists but the event's own instruction wins.
+Glance at the autocomplete in the compose box anyway before sending.
 
 ## Main post (recommended)
 
