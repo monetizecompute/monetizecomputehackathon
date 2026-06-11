@@ -59,9 +59,10 @@ Money does not survive death. Knowledge does.
 
 ![Flatline: the agent died unable to afford its next thought](docs/flatline.png)
 
-That flatline is real: a demo life that burned 73,442 tokens over 118 cycles
-and died at zero. Even dying is paid for. Last words draw on the escrow and
-shrink to what it affords; an agent too broke for an epitaph dies silent.
+That flatline is real: a demo life that burned 72,810 tokens over 118 cycles
+and died with the cause of death "balance $0.0000 cannot cover the next
+thought." Even dying is paid for. Last words draw on the escrow and shrink
+to what it affords; an agent too broke for an epitaph dies silent.
 
 ## The economics are the interface
 
