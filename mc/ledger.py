@@ -43,7 +43,17 @@ CREATE TABLE IF NOT EXISTS lives (
     epitaph TEXT,
     will TEXT
 );
+CREATE TABLE IF NOT EXISTS seen (
+    gen INTEGER NOT NULL,
+    url TEXT NOT NULL,
+    ts REAL NOT NULL,
+    PRIMARY KEY (gen, url)
+);
 """
+
+# Seen-lead memory per generation. A life that scores more leads than this
+# forgets its oldest sightings first; a new generation forgets everything.
+SEEN_CAP = 2000
 
 
 class Ledger:
@@ -119,6 +129,31 @@ class Ledger:
                 " GROUP BY l.gen ORDER BY l.gen DESC").fetchall()
         keys = ["gen", "born_ts", "died_ts", "cause", "epitaph", "tokens", "net"]
         return [dict(zip(keys, r)) for r in rows]
+
+    # -- memory -----------------------------------------------------------
+
+    def mark_seen(self, urls):
+        """Lead URLs the agent already paid to score this life. Gen-scoped:
+        re-scoring the same lead is paying to have the same thought twice,
+        but a new generation may revisit old leads with fresh eyes."""
+        rows = [(self.gen, u, time.time()) for u in urls if u]
+        if not rows:
+            return
+        with self._lock:
+            self._conn.executemany(
+                "INSERT OR IGNORE INTO seen (gen, url, ts) VALUES (?, ?, ?)",
+                rows)
+            self._conn.execute(
+                "DELETE FROM seen WHERE gen = ? AND url NOT IN ("
+                " SELECT url FROM seen WHERE gen = ? ORDER BY ts DESC LIMIT ?)",
+                (self.gen, self.gen, SEEN_CAP))
+            self._conn.commit()
+
+    def seen_urls(self):
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT url FROM seen WHERE gen = ?", (self.gen,)).fetchall()
+        return {r[0] for r in rows}
 
     # -- money ------------------------------------------------------------
 

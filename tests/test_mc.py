@@ -337,6 +337,105 @@ class InjectionDefenseTest(unittest.TestCase):
             self.assertIn("END LEAD>>>", prompt)
 
 
+class SeenLeadTest(unittest.TestCase):
+    A = {"title": "a", "url": "https://x.test/a", "content": ""}
+    B = {"title": "b", "url": "https://x.test/b", "content": ""}
+
+    def _agent(self, hunts):
+        agent = Agent(stake=5.0, cycle_seconds=0, db_path=tmp_db())
+        script = iter(hunts)
+        agent.scout.hunt = lambda q: next(script)
+        agent._prompts = prompts = []
+        def think(messages, memo=None, **k):
+            prompts.append(messages[-1]["content"])
+            return '{"pursue": false}'
+        agent.brain.think = think
+        return agent
+
+    def test_scored_url_not_resent_to_the_brain(self):
+        agent = self._agent([[self.A], [self.A, self.B]])
+        agent.run_cycle()
+        self.assertIn("x.test/a", agent._prompts[0])
+        agent.run_cycle()
+        self.assertIn("x.test/b", agent._prompts[1])
+        self.assertNotIn("x.test/a", agent._prompts[1])
+
+    def test_all_seen_hunt_skips_the_brain_entirely(self):
+        agent = self._agent([[self.A, self.B], [self.A, self.B]])
+        agent.run_cycle()
+        agent.run_cycle()  # nothing fresh: no brain call, no spend
+        self.assertEqual(len(agent._prompts), 1)
+        self.assertTrue(any("nothing new under the sun" in e["text"]
+                            for e in agent.events))
+
+    def test_seen_survives_restart_within_a_life(self):
+        db = tmp_db()
+        led = Ledger(db, starting_stake=5.0)
+        led.mark_seen(["https://x.test/a"])
+        led2 = Ledger(db, starting_stake=5.0)  # restart, same life
+        self.assertIn("https://x.test/a", led2.seen_urls())
+
+    def test_rebirth_forgets_what_the_dead_saw(self):
+        led = Ledger(tmp_db(), starting_stake=5.0)
+        led.mark_seen(["https://x.test/a"])
+        led.end_life("test")
+        led.begin_next_life()
+        self.assertNotIn("https://x.test/a", led.seen_urls())
+
+    def test_revive_starts_with_empty_memory(self):
+        agent = Agent(stake=0.005, cycle_seconds=0, db_path=tmp_db())
+        agent.run()  # demo mode burns the stake and dies, marking leads seen
+        self.assertFalse(agent.alive)
+        self.assertTrue(agent.ledger.seen_urls())
+        agent.start_background = lambda: None  # inspect gen 2 before it hunts
+        agent.revive(5.0, "resurrection")
+        self.assertEqual(agent.ledger.seen_urls(), set())
+
+
+class BackoffTest(unittest.TestCase):
+    def _starving_agent(self):
+        agent = Agent(stake=5.0, cycle_seconds=60, db_path=tmp_db())
+        agent.scout.hunt = lambda q: []  # empty hunts, no brain calls
+        return agent
+
+    def test_three_dry_cycles_slow_the_metabolism(self):
+        agent = self._starving_agent()
+        self.assertEqual(agent._next_sleep(), 60)
+        for _ in range(3):
+            agent.run_cycle()
+        self.assertGreater(agent._next_sleep(), 60)
+        self.assertTrue(any("slowing metabolism" in e["text"]
+                            for e in agent.events))
+
+    def test_backoff_caps_at_ten_times_base(self):
+        agent = self._starving_agent()
+        for _ in range(20):
+            agent.run_cycle()
+        self.assertEqual(agent._next_sleep(), 600)
+
+    def test_pursued_lead_resets_the_metabolism(self):
+        agent = self._starving_agent()
+        for _ in range(4):
+            agent.run_cycle()
+        self.assertGreater(agent._next_sleep(), 60)
+        agent.scout.hunt = lambda q: [
+            {"title": "p", "url": "https://x.test/p", "content": ""}]
+        script = iter([
+            '{"pursue": true, "url": "https://x.test/p", "expected_usd": 5, "plan": "p"}',
+            'deliverable\n{"action": "GITHUB_CREATE_PULL_REQUEST", "params": {}}',
+        ])
+        agent.brain.think = lambda *a, **k: next(script)
+        agent.run_cycle()
+        self.assertEqual(agent._next_sleep(), 60)
+        self.assertTrue(any("back to base" in e["text"] for e in agent.events))
+
+    def test_banked_money_resets_the_metabolism(self):
+        agent = Agent(stake=5.0, cycle_seconds=60, db_path=tmp_db())
+        agent._dry_cycles = 8
+        agent.revive(1.0, "tip")  # alive: banks, no new generation
+        self.assertEqual(agent._next_sleep(), 60)
+
+
 class FailedCallStillChargesTest(unittest.TestCase):
     def test_network_failure_debits_worst_case(self):
         import urllib.request as ur

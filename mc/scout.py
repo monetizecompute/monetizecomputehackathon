@@ -8,6 +8,7 @@ dollars per token before anything gets executed.
 import json
 import os
 import re
+import time
 import urllib.request
 
 TAVILY_URL = "https://api.tavily.com/search"
@@ -41,6 +42,7 @@ HUNTS = [
 class Scout:
     def __init__(self):
         self.api_key = os.environ.get("TAVILY_API_KEY")
+        self._demo_n = 0
 
     @property
     def live(self):
@@ -48,9 +50,12 @@ class Scout:
 
     def hunt(self, query):
         if not self.live:
+            # Each demo hunt fabricates a fresh URL; a fixed one would trip
+            # seen-lead memory and let the demo loop live forever for free.
+            self._demo_n += 1
             return [{
                 "title": "[simulated lead: set TAVILY_API_KEY for live hunting]",
-                "url": "https://example.com",
+                "url": f"https://example.com/lead-{int(time.time())}-{self._demo_n}",
                 "content": "Demo mode. Real run searches Algora and GitHub for open cash bounties.",
             }]
         body = json.dumps({

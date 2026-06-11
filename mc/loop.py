@@ -52,6 +52,9 @@ WILL_PROMPT = (
     "worked, what wasted money, what to try next. No sentiment, just lessons."
 )
 
+STARVE_AFTER = 3  # consecutive dry cycles before the metabolism slows
+BACKOFF_CAP = 10  # sleep never stretches past this multiple of base
+
 
 class Agent:
     def __init__(self, stake=5.0, cycle_seconds=60, db_path=None):
@@ -71,6 +74,7 @@ class Agent:
         self._lifecycle_lock = threading.Lock()
         self._born_ts = time.time()
         self._booked_urls = set()
+        self._dry_cycles = 0
 
     def emit(self, kind, text):
         evt = {"ts": time.time(), "kind": kind, "text": text}
@@ -108,14 +112,24 @@ class Agent:
         self._hunt_idx += 1
         self.emit("hunt", f"hunting: {query}")
         leads = self.scout.hunt(query)
-        self.emit("hunt", f"{len(leads)} leads back")
         if not leads:
             self.emit("pass", "no leads; not spending tokens on an empty page")
+            self._dry()
             return
+        # Re-scoring a lead is paying to have the same thought twice. Filter
+        # against this generation's seen memory before any token is spent.
+        seen = self.ledger.seen_urls()
+        fresh = [l for l in leads if l.get("url") not in seen]
+        self.emit("hunt", f"{len(leads)} leads back, {len(fresh)} unseen")
+        if not fresh:
+            self.emit("pass", "nothing new under the sun; not paying to think it twice")
+            self._dry()
+            return
+        self.ledger.mark_seen(l.get("url") for l in fresh)
 
         # delimit each lead so the brain can tell scraped data from orders
         leads_block = "\n".join(
-            f"<<<LEAD\n{json.dumps(l, indent=1)}\nEND LEAD>>>" for l in leads)
+            f"<<<LEAD\n{json.dumps(l, indent=1)}\nEND LEAD>>>" for l in fresh)
         decision_raw = self.brain.think(
             [{"role": "system", "content": self._system()},
              {"role": "user", "content": SCORE_PROMPT.format(
@@ -127,8 +141,10 @@ class Agent:
 
         if not decision.get("pursue"):
             self.emit("pass", decision.get("reason", "nothing worth the tokens this cycle"))
+            self._dry()
             return
 
+        self._fed()
         expected = self._usd(decision.get("expected_usd"))
         self.emit("pursue", f"${expected:.2f} expected: "
                             f"{decision.get('plan', '')} ({decision.get('url', '')})")
@@ -161,6 +177,32 @@ class Agent:
                 self.emit("booked", f"${expected:.2f} booked, pending human review and payout")
         else:
             self.emit("work", "deliverable produced, no submit action parsed")
+
+    def _next_sleep(self):
+        """Seconds until the next cycle. Hunger without prey slows the
+        metabolism: after STARVE_AFTER dry cycles the sleep doubles each
+        cycle, capped at BACKOFF_CAP times base."""
+        extra = self._dry_cycles - STARVE_AFTER
+        if extra < 0:
+            return self.cycle_seconds
+        return min(self.cycle_seconds * 2 ** (extra + 1),
+                   self.cycle_seconds * BACKOFF_CAP)
+
+    def _dry(self):
+        """A cycle that pursued nothing. Hunting costs money too."""
+        before = self._next_sleep()
+        self._dry_cycles += 1
+        after = self._next_sleep()
+        if after > before:
+            self.emit("metabolism", f"slowing metabolism: {self._dry_cycles} "
+                                    f"dry cycles, next cycle in {after:.0f}s")
+
+    def _fed(self):
+        """A pursued lead or fresh money. Back to full hunting speed."""
+        if self._next_sleep() > self.cycle_seconds:
+            self.emit("metabolism", "metabolism back to base: "
+                                    "worth hunting at full speed again")
+        self._dry_cycles = 0
 
     @staticmethod
     def _usd(value):
@@ -230,6 +272,7 @@ class Agent:
             if self.alive:
                 self.ledger.bank(donor_usd, memo, proof_url, source)
                 self.emit("banked", f"${donor_usd:.2f} banked ({source}): {memo}")
+                self._fed()  # money in the wallet ends the slowdown
                 return
             old = self._thread
             if old is not None and old.is_alive():
@@ -240,6 +283,7 @@ class Agent:
             self.cycle = 0
             self._born_ts = time.time()
             self._booked_urls = set()
+            self._fed()
             self.emit("banked", f"${donor_usd:.2f} banked ({source}): {memo}")
             self.emit("rebirth", f"generation {gen}. fresh stake, "
                                  f"{len(self.ledger.wills())} inherited wills.")
@@ -263,7 +307,7 @@ class Agent:
                 break
             except Exception as e:  # a crash must not look like a profit
                 self.emit("error", f"{type(e).__name__}: {e}")
-            time.sleep(self.cycle_seconds)
+            time.sleep(self._next_sleep())
 
     def start_background(self):
         if self._thread is not None and self._thread.is_alive():
