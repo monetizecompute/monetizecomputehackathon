@@ -46,5 +46,6 @@ Q&A ammo:
 - "What breaks at scale?" The bounty supply, not the metering. The ledger
   pattern ports to any agent workload; that's the company.
 - "Prior art?" Truth Terminal got rich passively, Freysa was a game, Pip
-  earned zero, Project Vend's inference was free. Nobody made thinking cost
+  earned zero, Project Vend's inference was free. Even the newest "sovereign
+  agent" repos still can't receive a dollar. Nobody made thinking cost
   the thinker.

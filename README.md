@@ -80,6 +80,11 @@ guarded a prize pool in an adversarial game. [Pip](https://dev.to/farkharoumy/im
 had 60 hours to earn a dollar and earned zero, mostly hitting KYC walls.
 Anthropic's Project Vend gave Claude a real business and a real P&L, but its
 inference was free: it could lose money on snacks, never on thoughts.
+Conway Research's [automaton](https://github.com/Conway-Research/automaton)
+is a "sovereign" agent with an Ethereum wallet, credit tiers, self-replication,
+and a death state, but no way to receive money: no payment receivers, no
+marketplace. It lives on manual USDC top-ups from its creator and revives
+when funds appear. A wallet and a death clock, on life support.
 
 What none of them did, and this does: meter every thought at real fiat
 per-token rates against a hard prepaid balance, make earning productive
