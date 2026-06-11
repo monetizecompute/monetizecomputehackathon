@@ -75,7 +75,10 @@ banked), and let death teach the next generation.
 
 ## Stack
 
-- **OpenClaw** as the runtime harness
+- **OpenClaw** as the runtime: [`openclaw/SKILL.md`](openclaw/SKILL.md) makes
+  OpenClaw the agent's operator, watching vitals, verifying payouts before
+  they bank, and deciding (with a human) whether a dead agent earns a
+  resurrection
 - **Nebius** as the bank account: every token priced into the ledger at real rates
 - **Tavily** for hunting paid work
 - **Composio** for executing it
