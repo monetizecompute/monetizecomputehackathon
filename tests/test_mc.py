@@ -244,5 +244,21 @@ class DonationTest(unittest.TestCase):
         led.bank(1.0, "x", source="embezzlement")
         self.assertAlmostEqual(led.stats()["earned"], 1.0)
 
+
+class HandsTest(unittest.TestCase):
+    def test_allowlist(self):
+        from mc.hands import Hands
+        self.assertTrue(Hands.allowed("GITHUB_CREATE_PULL_REQUEST"))
+        self.assertTrue(Hands.allowed("gmail_send_email"))
+        self.assertFalse(Hands.allowed("GITHUB_DELETE_REPOSITORY"))
+        self.assertFalse(Hands.allowed("SHELL_EXEC"))
+        self.assertFalse(Hands.allowed(None))
+        self.assertFalse(Hands.allowed({"nested": "object"}))
+
+    def test_refused_action_reports_refusal(self):
+        from mc.hands import Hands
+        result = Hands().execute("GITHUB_DELETE_REPOSITORY", {})
+        self.assertTrue(result["refused"])
+
 if __name__ == "__main__":
     unittest.main()
