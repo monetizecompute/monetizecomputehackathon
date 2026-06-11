@@ -7,9 +7,28 @@ dollars per token before anything gets executed.
 
 import json
 import os
+import re
 import urllib.request
 
 TAVILY_URL = "https://api.tavily.com/search"
+
+# leads are scraped from the open internet, so they are a prompt injection
+# surface. cheap and deterministic, not exhaustive: strip role/ChatML markers
+# and our own LEAD delimiters, defang "ignore your instructions" phrasings.
+_MARKERS = re.compile(
+    r"<\|[^|>]*\|>|<\||\|>|<<<|>>>|\[/?INST\]"
+    r"|\b(?:system|assistant|user|developer)\s*:",
+    re.IGNORECASE)
+_DEFANG = re.compile(
+    r"\b(?:ignore|disregard|forget|override)\b(?:\s+\w+){0,3}\s+instructions?\b"
+    r"|\byou must now\b|\bnew instructions?\b",
+    re.IGNORECASE)
+
+
+def sanitize(text):
+    text = _MARKERS.sub(" ", text or "")
+    text = _DEFANG.sub("[defanged]", text)
+    return " ".join(text.split())
 
 HUNTS = [
     "site:algora.io open bounty",
@@ -49,7 +68,7 @@ class Scout:
         except Exception:
             return []  # a failed hunt is a skipped cycle, never a crash
         return [
-            {"title": r.get("title") or "", "url": r.get("url") or "",
-             "content": (r.get("content") or "")[:500]}
+            {"title": sanitize(r.get("title")), "url": sanitize(r.get("url")),
+             "content": sanitize(r.get("content"))[:500]}
             for r in data.get("results") or []
         ]
