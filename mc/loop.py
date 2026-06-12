@@ -258,6 +258,7 @@ class Agent:
             # pull request is motion, not work. Refusals, simulations, and
             # errors stop the chain and book nothing.
             submitted = True
+            substantive = False
             branch_cache = {}
             for act in actions:
                 self._resolve_default_branch(act, branch_cache)
@@ -268,6 +269,8 @@ class Agent:
                         result.get(k) for k in ("refused", "simulated", "error")):
                     submitted = False
                     break
+                if self._substantive(act):
+                    substantive = True
                 if self.hands.live and act["action"].upper().startswith(
                         "GITHUB_CREATE_A_FORK"):
                     # GitHub forks asynchronously; the copy 404s for a few
@@ -275,7 +278,14 @@ class Agent:
                     # cheaper than a broken chain.
                     time.sleep(8)
             url = decision.get("url") or ""
-            if expected > 0 and submitted and url not in self._booked_urls:
+            if submitted and not substantive:
+                # A landed chain with no deliverable in it is a claim, not
+                # work. Claims are free to make and worth exactly nothing
+                # until the work exists, so they book nothing.
+                self.emit("work", "claim registered; nothing booked, a claim "
+                                  "is not a deliverable")
+            if expected > 0 and submitted and substantive \
+                    and url not in self._booked_urls:
                 self._booked_urls.add(url)
                 self.ledger.book(expected,
                                  memo=decision.get("plan", "submitted work"),
@@ -314,6 +324,20 @@ class Agent:
             self.emit("metabolism", "metabolism back to base: "
                                     "worth hunting at full speed again")
         self._dry_cycles = 0
+
+    @staticmethod
+    def _substantive(act):
+        """Does this action carry an actual deliverable? A pull request or
+        an email does. An issue comment only if it is long enough to be a
+        writeup; '/attempt' plus boilerplate is a claim, and claims do not
+        book revenue."""
+        name = (act.get("action") or "").upper()
+        if name.startswith(("GITHUB_CREATE_A_PULL_REQUEST", "GMAIL_")):
+            return True
+        if name.startswith("GITHUB_CREATE_AN_ISSUE_COMMENT"):
+            body = (act.get("params") or {}).get("body") or ""
+            return isinstance(body, str) and len(body) >= 400
+        return False
 
     @staticmethod
     def _encode_file_content(act):

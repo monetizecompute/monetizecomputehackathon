@@ -315,6 +315,33 @@ class BookingGateTest(unittest.TestCase):
         self.assertTrue(any("charity" in e["text"] for e in agent.events))
         self.assertEqual(agent.ledger.stats()["booked"], 0)
 
+    def test_claim_only_chain_books_nothing(self):
+        agent = Agent(stake=5.0, cycle_seconds=0, db_path=tmp_db())
+        script = iter([
+            '{"pursue": true, "url": "https://x.test/1", "expected_usd": 20, "plan": "p"}',
+            '{"action": "GITHUB_CREATE_A_FORK", "params": {}}\n'
+            '{"action": "GITHUB_CREATE_AN_ISSUE_COMMENT", "params": {"body": "/attempt"}}',
+        ])
+        agent.brain.think = lambda *a, **k: next(script)
+        agent.hands.execute = lambda a, p: {"successful": True}
+        agent.run_cycle()  # the chain landed, but a claim is not a deliverable
+        self.assertEqual(agent.ledger.stats()["booked"], 0)
+        self.assertTrue(any("claim is not a deliverable" in e["text"]
+                            for e in agent.events))
+
+    def test_writeup_comment_is_a_deliverable(self):
+        agent = Agent(stake=5.0, cycle_seconds=0, db_path=tmp_db())
+        writeup = "Here is the analysis and the fix, step by step. " * 12
+        script = iter([
+            '{"pursue": true, "url": "https://x.test/1", "expected_usd": 15, "plan": "p"}',
+            json.dumps({"action": "GITHUB_CREATE_AN_ISSUE_COMMENT",
+                        "params": {"body": writeup}}),
+        ])
+        agent.brain.think = lambda *a, **k: next(script)
+        agent.hands.execute = lambda a, p: {"successful": True}
+        agent.run_cycle()
+        self.assertEqual(agent.ledger.stats()["booked"], 15)
+
     def _agent_with_chain(self, results_by_action):
         agent = Agent(stake=5.0, cycle_seconds=0, db_path=tmp_db())
         script = iter([
