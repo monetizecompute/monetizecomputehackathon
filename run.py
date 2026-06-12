@@ -36,11 +36,15 @@ def main():
     p.add_argument("--stake", type=float, default=5.0, help="starting wallet, USD")
     p.add_argument("--cycle", type=int, default=60, help="seconds between cycles")
     p.add_argument("--port", type=int, default=8901, help="dashboard port")
+    p.add_argument("--db", type=Path, default=None,
+                   help="ledger path (default ledger.db); separate ledgers "
+                        "are separate bodies, but every body shares the soul")
     args = p.parse_args()
     if args.stake <= 0:
         p.error("--stake must be positive; a $0 life is not a life")
 
-    agent = Agent(stake=args.stake, cycle_seconds=args.cycle)
+    agent = Agent(stake=args.stake, cycle_seconds=args.cycle) if args.db is None \
+        else Agent(stake=args.stake, cycle_seconds=args.cycle, db_path=args.db)
     agent.start_background()
     serve(agent, port=args.port)
 
