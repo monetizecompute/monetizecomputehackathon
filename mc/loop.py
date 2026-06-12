@@ -149,8 +149,12 @@ class Agent:
 
         hunt = HUNTS[self._hunt_idx % len(HUNTS)]
         self._hunt_idx += 1
-        ground = ",".join(hunt.get("include_domains") or []) or "open web"
-        self.emit("hunt", f"hunting: {hunt['query']} ({ground})")
+        if hunt.get("extract"):
+            self.emit("hunt", f"reading {len(hunt['extract'])} known bounty "
+                              f"boards directly")
+        else:
+            ground = ",".join(hunt.get("include_domains") or []) or "open web"
+            self.emit("hunt", f"hunting: {hunt['query']} ({ground})")
         leads = self.scout.hunt(hunt)
         if not leads:
             self.emit("pass", "no leads; not spending tokens on an empty page")

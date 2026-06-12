@@ -570,6 +570,21 @@ class AlgoraDeepTest(unittest.TestCase):
         self.assertEqual(parse_algora_rows("no bounties here, just $5 text"), [])
         self.assertEqual(parse_algora_rows(None), [])
 
+    def test_extract_hunt_reads_boards_instead_of_searching(self):
+        from mc.scout import Scout
+        scout = Scout()
+        scout.api_key = "test-key"
+        seen_urls = []
+        def fake_extract(urls):
+            seen_urls.extend(urls)
+            return ["| $25  [repo#1  Fix the thing]"
+                    "(https://github.com/o/repo/issues/1) |"]
+        scout._extract = fake_extract
+        leads = scout.hunt({"extract": ["https://algora.io/o/bounties"]})
+        self.assertEqual(seen_urls, ["https://algora.io/o/bounties"])
+        self.assertEqual(len(leads), 1)
+        self.assertIn("$25", leads[0]["title"])
+
 
 class SoulTest(unittest.TestCase):
     def test_recall_budget_follows_the_wallet(self):

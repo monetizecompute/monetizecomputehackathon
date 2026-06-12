@@ -36,8 +36,12 @@ def sanitize(text):
 # where bounties actually live; the open hunts catch what the maps miss.
 # Algora's bounty boards are long-lived pages, so they get no freshness
 # window; a GitHub issue that has not been touched in a month is usually a
-# claimed bounty wearing an open label.
+# claimed bounty wearing an open label. The extract hunt reads known
+# watering holes directly: boards verified to hold open escrow, the
+# difference between wandering and trapping.
 HUNTS = [
+    {"extract": ["https://algora.io/cal/bounties?status=open",
+                 "https://algora.io/tscircuit/bounties?status=open"]},
     {"query": "open bounty reward", "include_domains": ["algora.io"]},
     {"query": "issue open bounty attempt reward \"💎\"",
      "include_domains": ["github.com"], "time_range": "month"},
@@ -85,6 +89,11 @@ class Scout:
     def hunt(self, hunt):
         if isinstance(hunt, str):  # bare query, no ground to scope it to
             hunt = {"query": hunt, "include_domains": []}
+        if self.live and hunt.get("extract"):
+            leads = []
+            for page in self._extract(hunt["extract"]):
+                leads.extend(parse_algora_rows(page))
+            return leads
         if not self.live:
             # Each demo hunt fabricates a fresh URL; a fixed one would trip
             # seen-lead memory and let the demo loop live forever for free.
