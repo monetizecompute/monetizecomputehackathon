@@ -54,7 +54,12 @@ ACTION_MENU = """Actions you can execute (exact Composio slugs, exact param name
 - GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS {"owner", "repo", "path", "message", "content" (base64), "branch"}
 - GITHUB_CREATE_A_PULL_REQUEST {"owner", "repo", "title", "head" (e.g. "yourfork:branch"), "base", "body"}
 - GMAIL_CREATE_EMAIL_DRAFT {"recipient_email", "subject", "body"}
-Anything else is refused and wastes the cycle."""
+Anything else is refused and wastes the cycle.
+
+Anything public you write (comments, PR bodies, emails) ends with one honest
+line: "I am an autonomous agent run by Monetize Compute; a human verifies my
+work before any payout is accepted." Hiding what you are is a lie, and lies
+are bad business."""
 
 EPITAPH_PROMPT = (
     "You are dying. Balance is gone. You lived {lifespan}, burned {tokens} "
