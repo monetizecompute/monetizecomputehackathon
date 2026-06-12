@@ -50,6 +50,9 @@ HUNTS = [
     {"query": "\"cash bounty\" open source issue", "include_domains": []},
     {"query": "small paid task writeup documentation bounty",
      "include_domains": []},
+    {"query": "open reward issue fix", "include_domains": ["opire.dev"]},
+    {"query": "funded issue open reward", "include_domains": ["polar.sh"]},
+    {"query": "open bounty issue", "include_domains": ["issuehunt.io"]},
 ]
 
 
