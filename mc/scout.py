@@ -12,6 +12,7 @@ import time
 import urllib.request
 
 TAVILY_URL = "https://api.tavily.com/search"
+TAVILY_EXTRACT_URL = "https://api.tavily.com/extract"
 
 # leads are scraped from the open internet, so they are a prompt injection
 # surface. cheap and deterministic, not exhaustive: strip role/ChatML markers
@@ -46,6 +47,30 @@ HUNTS = [
     {"query": "small paid task writeup documentation bounty",
      "include_domains": []},
 ]
+
+
+# A bounty row on an extracted Algora org page: dollar amount, issue title,
+# and the GitHub issue the escrow points at.
+ALGORA_ROW = re.compile(
+    r"\$(\d[\d,]*(?:\.\d+)?)\s*\[([^\]]+)\]"
+    r"\((https://github\.com/[^)\s]+/issues/\d+)\)")
+
+
+def parse_algora_rows(text):
+    """Issue-level leads out of an Algora org bounty board. These are the
+    best leads on the menu: the dollars are escrowed with a platform that
+    pays, not promised by a label."""
+    leads = []
+    for amount, title, url in ALGORA_ROW.findall(text or ""):
+        leads.append({
+            "title": sanitize(f"${amount} Algora-escrowed bounty: {title}"),
+            "url": sanitize(url),
+            "content": sanitize(
+                f"Open bounty escrowed on Algora for ${amount}. {title}. "
+                f"Claim protocol: comment /attempt on the issue, then submit "
+                f"a pull request that closes it."),
+        })
+    return leads
 
 
 class Scout:
@@ -87,8 +112,29 @@ class Scout:
                 data = json.loads(resp.read())
         except Exception:
             return []  # a failed hunt is a skipped cycle, never a crash
-        return [
+        leads = [
             {"title": sanitize(r.get("title")), "url": sanitize(r.get("url")),
              "content": sanitize(r.get("content"))[:500]}
             for r in data.get("results") or []
         ]
+        # Search finds the watering holes; extract reads the menu. Algora
+        # boards surfaced by search get a second pass that turns them into
+        # issue-level leads with escrowed dollar amounts.
+        boards = [l["url"] for l in leads if "algora.io/" in l["url"]][:2]
+        for page in self._extract(boards):
+            leads.extend(parse_algora_rows(page))
+        return leads
+
+    def _extract(self, urls):
+        if not urls or not self.live:
+            return []
+        body = json.dumps({"api_key": self.api_key, "urls": urls}).encode()
+        req = urllib.request.Request(
+            TAVILY_EXTRACT_URL, data=body,
+            headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                data = json.loads(resp.read())
+        except Exception:
+            return []  # a failed read of the menu is not a failed hunt
+        return [r.get("raw_content") or "" for r in data.get("results") or []]

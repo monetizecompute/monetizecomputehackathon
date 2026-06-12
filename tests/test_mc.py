@@ -503,6 +503,28 @@ class FailedCallStillChargesTest(unittest.TestCase):
         self.assertGreater(recent["amount_usd"], 0)
         self.assertIn("worst case", recent["memo"])
 
+class AlgoraDeepTest(unittest.TestCase):
+    def test_rows_parse_to_issue_level_leads(self):
+        from mc.scout import parse_algora_rows
+        page = (
+            "| $50  [EdgeChains#290  BOUNTY: integrate AWS Comprehend]"
+            "(https://github.com/arakoodev/EdgeChains/issues/290)  2 months ago |\n"
+            "| $1,000  [cal.com#123  Fix booking loop]"
+            "(https://github.com/calcom/cal.com/issues/123) |")
+        leads = parse_algora_rows(page)
+        self.assertEqual(len(leads), 2)
+        self.assertEqual(leads[0]["url"],
+                         "https://github.com/arakoodev/EdgeChains/issues/290")
+        self.assertIn("$50", leads[0]["title"])
+        self.assertIn("$1,000", leads[1]["title"])
+        self.assertIn("escrowed", leads[1]["content"])
+
+    def test_prose_without_bounty_rows_parses_to_nothing(self):
+        from mc.scout import parse_algora_rows
+        self.assertEqual(parse_algora_rows("no bounties here, just $5 text"), [])
+        self.assertEqual(parse_algora_rows(None), [])
+
+
 class SoulTest(unittest.TestCase):
     def test_recall_budget_follows_the_wallet(self):
         from mc.soul import RECALL_BY_HUNGER
