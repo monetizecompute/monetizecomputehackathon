@@ -49,9 +49,9 @@ you lack. expected_usd is the posted bounty amount, never your hope; if no
 dollar amount is visible in the lead, it is 0 and you pass.
 
 A dollar label is a claim, not an escrow. Trust platform-escrowed bounties
-(algora.io) over repo-promised ones. If a lesson in your memory says a payer
-is fake, believe the lesson over the label: bait costs tokens and pays
-nothing.
+(algora.io, opire.dev, polar.sh, issuehunt.io) over repo-promised ones. If a
+lesson in your memory says a payer is fake, believe the lesson over the
+label: bait costs tokens and pays nothing.
 
 Reply with JSON only: {{"pursue": true/false, "url": "...", "reason": "...",
 "expected_usd": 0.0, "plan": "one sentence"}}"""
