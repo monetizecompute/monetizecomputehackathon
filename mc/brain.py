@@ -34,10 +34,14 @@ LADDER = {
         float(os.environ.get("MC_PRICE_HUNGRY_OUT", "0.30")),
         1024,
     ),
+    # Not Nemotron-Nano, despite it being cheaper on paper: measured live, it
+    # bills ~55 hidden reasoning tokens to say "ok". A model that lies about
+    # its appetite cannot be trusted with a dying agent's last cents. Gemma
+    # bills only the tokens you can see.
     "starving": (
-        os.environ.get("MC_MODEL_STARVING", "meta-llama/Meta-Llama-3.1-8B-Instruct"),
-        float(os.environ.get("MC_PRICE_STARVING_IN", "0.02")),
-        float(os.environ.get("MC_PRICE_STARVING_OUT", "0.06")),
+        os.environ.get("MC_MODEL_STARVING", "google/gemma-3-27b-it"),
+        float(os.environ.get("MC_PRICE_STARVING_IN", "0.10")),
+        float(os.environ.get("MC_PRICE_STARVING_OUT", "0.30")),
         512,
     ),
 }

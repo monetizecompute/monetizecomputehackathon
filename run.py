@@ -5,9 +5,30 @@
 """
 
 import argparse
+import os
+from pathlib import Path
 
-from mc.loop import Agent
-from mc.server import serve
+
+def load_env(path=Path(__file__).resolve().parent / ".env"):
+    """Minimal .env loader, stdlib only. Real environment always wins:
+    a deployed override must beat a file on disk. Must run before mc
+    imports; the model ladder is priced at import time."""
+    try:
+        lines = path.read_text().splitlines()
+    except OSError:
+        return
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        os.environ.setdefault(key.strip(), value.strip().strip("'\""))
+
+
+load_env()
+
+from mc.loop import Agent  # noqa: E402  (env must load first)
+from mc.server import serve  # noqa: E402
 
 
 def main():
