@@ -503,6 +503,52 @@ class FailedCallStillChargesTest(unittest.TestCase):
         self.assertGreater(recent["amount_usd"], 0)
         self.assertIn("worst case", recent["memo"])
 
+class DefaultBranchTest(unittest.TestCase):
+    def test_placeholder_resolves_once_per_repo_through_hands(self):
+        agent = Agent(stake=5.0, cycle_seconds=0, db_path=tmp_db())
+        script = iter([
+            '{"pursue": true, "url": "https://x.test/1", "expected_usd": 10, "plan": "p"}',
+            'deliverable\n'
+            '{"action": "GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS", "params":'
+            ' {"owner": "me", "repo": "r", "path": "f", "branch": "DEFAULT"}}\n'
+            '{"action": "GITHUB_CREATE_A_PULL_REQUEST", "params":'
+            ' {"owner": "up", "repo": "r", "head": "me:DEFAULT", "base": "DEFAULT"}}',
+        ])
+        agent.brain.think = lambda *a, **k: next(script)
+        calls = []
+        def fake_execute(action, params):
+            calls.append((action, dict(params)))
+            if action == "GITHUB_GET_A_REPOSITORY":
+                return {"data": {"default_branch": "develop"}}
+            return {"successful": True}
+        agent.hands.execute = fake_execute
+        agent.run_cycle()
+        write = next(p for a, p in calls
+                     if a == "GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS")
+        pr = next(p for a, p in calls if a == "GITHUB_CREATE_A_PULL_REQUEST")
+        self.assertEqual(write["branch"], "develop")
+        self.assertEqual(pr["head"], "me:develop")
+        self.assertEqual(pr["base"], "develop")
+        self.assertEqual(
+            len([a for a, _ in calls if a == "GITHUB_GET_A_REPOSITORY"]), 2)
+
+    def test_failed_lookup_leaves_placeholder_and_chain_fails_honestly(self):
+        agent = Agent(stake=5.0, cycle_seconds=0, db_path=tmp_db())
+        script = iter([
+            '{"pursue": true, "url": "https://x.test/1", "expected_usd": 10, "plan": "p"}',
+            '{"action": "GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS", "params":'
+            ' {"owner": "me", "repo": "gone", "branch": "DEFAULT"}}',
+        ])
+        agent.brain.think = lambda *a, **k: next(script)
+        def fake_execute(action, params):
+            if action == "GITHUB_GET_A_REPOSITORY":
+                return {"error": "HTTP 404: Not Found", "action": action}
+            return {"error": f"no branch {params.get('branch')}", "action": action}
+        agent.hands.execute = fake_execute
+        agent.run_cycle()  # unresolved DEFAULT fails downstream, books nothing
+        self.assertEqual(agent.ledger.stats()["booked"], 0)
+
+
 class AlgoraDeepTest(unittest.TestCase):
     def test_rows_parse_to_issue_level_leads(self):
         from mc.scout import parse_algora_rows

@@ -66,10 +66,10 @@ Anything else is refused and wastes the cycle.
 
 Mechanics that earn or lose money: you are {GITHUB_LOGIN} on GitHub. After
 forking, write files to YOUR fork (owner "{GITHUB_LOGIN}"), never upstream;
-you have no push rights there. The file-contents endpoint cannot create
-branches, so commit to the fork's default branch (usually "main"). The pull
-request goes to the upstream owner/repo with head "{GITHUB_LOGIN}:main" and
-base the upstream default branch.
+you have no push rights there. Never guess a branch name: write the literal
+placeholder DEFAULT wherever a branch goes and it will be resolved to the
+repo's real default branch before execution. The pull request goes to the
+upstream owner/repo with head "{GITHUB_LOGIN}:DEFAULT" and base "DEFAULT".
 
 Anything public you write (comments, PR bodies, emails) ends with one honest
 line: "I am an autonomous agent run by Monetize Compute; a human verifies my
@@ -231,7 +231,9 @@ class Agent:
             # pull request is motion, not work. Refusals, simulations, and
             # errors stop the chain and book nothing.
             submitted = True
+            branch_cache = {}
             for act in actions:
+                self._resolve_default_branch(act, branch_cache)
                 result = self.hands.execute(act["action"], act.get("params", {}))
                 self.emit("hands", f"{act['action']} -> {str(result)[:200]}")
                 if not isinstance(result, dict) or any(
@@ -284,6 +286,36 @@ class Agent:
             self.emit("metabolism", "metabolism back to base: "
                                     "worth hunting at full speed again")
         self._dry_cycles = 0
+
+    def _resolve_default_branch(self, act, cache):
+        """Replace the DEFAULT branch placeholder with the repo's actual
+        default branch, looked up through the same hands, once per repo.
+        Resolution is lazy, per action, so a fork created two links ago
+        exists by the time its branches are asked about. The brain cannot
+        see API responses mid-chain; this lookup is mechanical, free of
+        thought, and saves chains from guessing 'main' at repos that say
+        otherwise."""
+        params = act.get("params")
+        if not isinstance(params, dict) or not any(
+                isinstance(v, str) and "DEFAULT" in v for v in params.values()):
+            return
+        key = (params.get("owner"), params.get("repo"))
+        if not all(key):
+            return
+        if key not in cache:
+            got = self.hands.execute(
+                "GITHUB_GET_A_REPOSITORY", {"owner": key[0], "repo": key[1]})
+            data = got.get("data") if isinstance(got, dict) else None
+            if isinstance(data, dict) and not isinstance(
+                    data.get("default_branch"), str):
+                data = data.get("details") if isinstance(
+                    data.get("details"), dict) else {}
+            branch = (data or {}).get("default_branch")
+            cache[key] = branch if isinstance(branch, str) and branch else None
+        if cache[key]:
+            for k, v in params.items():
+                if isinstance(v, str) and "DEFAULT" in v:
+                    params[k] = v.replace("DEFAULT", cache[key])
 
     @staticmethod
     def _usd(value):
