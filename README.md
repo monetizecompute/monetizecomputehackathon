@@ -28,12 +28,17 @@ A survival loop, every 60 seconds:
 2. **Hunt.** Tavily searches for work that pays: open cash bounties on Algora
    and GitHub, paid micro-tasks, anything legitimate it can finish with
    reasoning and tool calls.
-3. **Score.** The brain prices each lead in expected dollars per token, net of
+3. **Remember.** Before scoring, the soul (mem0) is searched for lessons from
+   past lives relevant to these exact leads. Recall is not free: every
+   remembered lesson rides into the prompt as paid input tokens, so the
+   recall budget follows the wallet. Five lessons when rich, one whisper
+   when starving. Poverty rations memory like everything else.
+4. **Score.** The brain prices each lead in expected dollars per token, net of
    platform fees (Algora's cut plus Stripe processing), before spending
    anything on it. Verbosity is self-harm when you pay your own bill.
-4. **Execute.** The brain produces the deliverable; Composio submits it as a
+5. **Execute.** The brain produces the deliverable; Composio submits it as a
    real action: the PR, the email.
-5. **Account.** Submitted work books as pending revenue. Booked is never
+6. **Account.** Submitted work books as pending revenue. Booked is never
    spendable; the agent cannot think against its own optimism. Cash only
    banks when a human confirms the payout with proof. The agent cannot pay
    itself.
@@ -42,16 +47,26 @@ A survival loop, every 60 seconds:
 
 The model ladder follows the wallet. Above 60 percent of stake it runs the big
 model and thinks at full length. Below that it downgrades to a mid model on a
-tighter token budget. Below 20 percent it runs the cheapest model on starvation
-rations, with its own system prompt telling it that every word shortens its
-life. The agent literally thinks smaller as it gets poorer.
+tighter token budget. Below 20 percent it runs starvation rations: the
+smallest honest model on the menu, with its own system prompt telling it that
+every word shortens its life. The agent literally thinks smaller as it gets
+poorer.
+
+"Honest" is load-bearing. The cheapest model on Nebius today is a nano
+reasoner that, measured live, bills 55 completion tokens to say "ok": hidden
+reasoning, stripped from the output, charged to the wallet. A model that lies
+about its appetite cannot be trusted with a dying agent's last cents, so the
+starving tier runs Gemma, which bills only the tokens you can see. When you
+pay for your own thoughts, model selection is a solvency decision.
 
 ## Death is in the schema
 
 A few cents are escrowed outside spendable balance. At insolvency the agent
 spends that reserve on two final completions: an epitaph, written knowing
 exactly how it lived, and a will: three to five terse lessons about earning
-money with tokens. Both go in the graveyard, on the dashboard, permanently.
+money with tokens. Both go in the graveyard, on the dashboard, permanently,
+and into mem0, where any future generation can find them by meaning instead
+of reading the family bible front to back.
 
 Banking real money into a dead agent starts the next generation. Same $5
 stake, zero inherited wealth, every ancestor's will in its system prompt.
@@ -100,6 +115,8 @@ banked), and let death teach the next generation.
 - **Nebius** as the bank account: every token priced into the ledger at real rates
 - **Tavily** for hunting paid work
 - **Composio** for executing it
+- **mem0** as the soul: wills, payouts, and causes of death persist across
+  generations and are recalled semantically when a new lead needs scoring
 
 ## Run it
 

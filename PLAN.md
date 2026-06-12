@@ -36,6 +36,24 @@ on this roadmap makes that more literal, more visible, or more brutal.
    generation. Every donation is a banked entry with proof like any other
    revenue.
 
+## Shipped (v3): live keys and a soul
+
+1. **Live end to end.** Real Nebius inference metered at rates pulled from
+   the billing API itself, real Tavily hunting, Composio hands over raw REST.
+   Still zero dependencies: the whole runtime is Python stdlib.
+2. **The soul.** mem0 holds what survives death: wills, payouts, causes of
+   death, booked work. Recalled semantically when leads need scoring, and
+   recall is rationed by hunger, because remembered lessons are paid input
+   tokens. A starving agent can afford one whisper from its ancestors.
+3. **Action chains.** One cycle can fork, commit, and open the pull request.
+   The brain gets an exact menu of Composio slugs; a chain books only if
+   every link lands. A fork without its PR is motion, not work.
+4. **Score calibration.** expected_usd is the posted bounty or zero. No
+   audits, no vulnerability hunts, nothing it cannot finish in a cycle.
+5. **Model honesty.** The starving tier runs the cheapest model that does not
+   bill hidden tokens. The actual cheapest model on the menu charges 55
+   completion tokens to say "ok"; measured, documented, declined.
+
 ## Later, if it earns the right
 
 - Multiple agents on separate wallets running different earning strategies.

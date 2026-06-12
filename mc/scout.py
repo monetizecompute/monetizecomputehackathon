@@ -31,11 +31,20 @@ def sanitize(text):
     text = _DEFANG.sub("[defanged]", text)
     return " ".join(text.split())
 
+# Each hunt is a query plus the ground it covers. Domain-scoped hunts go
+# where bounties actually live; the open hunts catch what the maps miss.
+# Algora's bounty boards are long-lived pages, so they get no freshness
+# window; a GitHub issue that has not been touched in a month is usually a
+# claimed bounty wearing an open label.
 HUNTS = [
-    "site:algora.io open bounty",
-    "github issue \"bounty\" label open reward USD",
-    "\"cash bounty\" open source issue 2026",
-    "paid task agent automation small bounty",
+    {"query": "open bounty reward", "include_domains": ["algora.io"]},
+    {"query": "issue open bounty attempt reward \"💎\"",
+     "include_domains": ["github.com"], "time_range": "month"},
+    {"query": "issue label bounty open USD paid on merge",
+     "include_domains": ["github.com"], "time_range": "month"},
+    {"query": "\"cash bounty\" open source issue", "include_domains": []},
+    {"query": "small paid task writeup documentation bounty",
+     "include_domains": []},
 ]
 
 
@@ -48,7 +57,9 @@ class Scout:
     def live(self):
         return bool(self.api_key)
 
-    def hunt(self, query):
+    def hunt(self, hunt):
+        if isinstance(hunt, str):  # bare query, no ground to scope it to
+            hunt = {"query": hunt, "include_domains": []}
         if not self.live:
             # Each demo hunt fabricates a fresh URL; a fixed one would trip
             # seen-lead memory and let the demo loop live forever for free.
@@ -58,12 +69,16 @@ class Scout:
                 "url": f"https://example.com/lead-{int(time.time())}-{self._demo_n}",
                 "content": "Demo mode. Real run searches Algora and GitHub for open cash bounties.",
             }]
-        body = json.dumps({
+        body = {
             "api_key": self.api_key,
-            "query": query,
+            "query": hunt["query"],
+            "include_domains": hunt.get("include_domains") or [],
             "search_depth": "advanced",
             "max_results": 8,
-        }).encode()
+        }
+        if hunt.get("time_range"):
+            body["time_range"] = hunt["time_range"]
+        body = json.dumps(body).encode()
         req = urllib.request.Request(
             TAVILY_URL, data=body, headers={"Content-Type": "application/json"}
         )

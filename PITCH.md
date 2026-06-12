@@ -19,8 +19,11 @@ Poverty makes it think smaller. That's not a metaphor, it's the model ladder.
 Point at the graveyard.
 
 This generation isn't the first. When one dies, it spends its last escrowed
-cents on an epitaph and a will: what it learned about earning. The next
-generation inherits the lessons and none of the money.
+cents on an epitaph and a will: what it learned about earning. The wills live
+in mem0, and the next generation recalls them by meaning when it prices a
+lead. It inherits the lessons and none of the money. Recall isn't free
+either: remembered lessons are paid input tokens, so a starving agent can
+afford one whisper from its ancestors where a rich one consults five.
 
 **The honesty beat (20s).**
 The numbers can't lie because the code won't let them. Booked isn't banked:
@@ -49,3 +52,6 @@ Q&A ammo:
   earned zero, Project Vend's inference was free. Even the newest "sovereign
   agent" repos still can't receive a dollar. Nobody made thinking cost
   the thinker.
+- "Why that model ladder?" The cheapest model on Nebius bills 55 hidden
+  reasoning tokens to say "ok". We measured, we documented, we declined.
+  When thinking costs the thinker, model selection is a solvency decision.
