@@ -302,6 +302,19 @@ class BookingGateTest(unittest.TestCase):
         agent.run_cycle()  # hands are in demo mode: simulated, not submitted
         self.assertEqual(agent.ledger.stats()["booked"], 0)
 
+    def test_zero_dollar_pursuit_is_a_pass(self):
+        agent = Agent(stake=5.0, cycle_seconds=0, db_path=tmp_db())
+        thoughts = []
+        def think(*a, **k):
+            thoughts.append(1)
+            return ('{"pursue": true, "url": "https://x.test/1",'
+                    ' "expected_usd": 0, "plan": "free work"}')
+        agent.brain.think = think
+        agent.run_cycle()  # the model wants charity; the wallet refuses
+        self.assertEqual(len(thoughts), 1)  # scored, never executed
+        self.assertTrue(any("charity" in e["text"] for e in agent.events))
+        self.assertEqual(agent.ledger.stats()["booked"], 0)
+
     def _agent_with_chain(self, results_by_action):
         agent = Agent(stake=5.0, cycle_seconds=0, db_path=tmp_db())
         script = iter([

@@ -47,6 +47,18 @@ carry `"source": "donation"` so it never inflates revenue per million tokens.
 Banking into a dead agent starts the next generation: same stake, inherited
 wills, zero inherited wealth.
 
+## Hands and soul
+
+The hands (Composio) need a one-time human OAuth: create a Connect Link via
+`POST /api/v3/connected_accounts/link` with the GitHub auth config and have
+the human click it. Until then every submission errors honestly and books
+nothing. Check status: `GET /api/v3/connected_accounts` should show the
+github account ACTIVE, user_id `mc-agent`.
+
+The soul (mem0) survives independently of `ledger.db`: wills, deaths, and
+payouts persist under user_id `monetize-compute` even if the local database
+is lost. Deleting `ledger.db` resets the body, not the memory.
+
 ## Rules
 
 - Never restart the agent to dodge a death. Death is data; the will is the point.

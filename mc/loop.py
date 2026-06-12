@@ -181,8 +181,16 @@ class Agent:
             self._dry()
             return
 
-        self._fed()
         expected = self._usd(decision.get("expected_usd"))
+        # The prompt tells the brain a lead with no posted dollars is a pass.
+        # The wallet does not run on prompts: a $0 pursuit is charity, and
+        # charity is death, so the gate is code.
+        if expected <= 0:
+            self.emit("pass", "lead pays $0; not spending tokens on charity")
+            self._dry()
+            return
+
+        self._fed()
         self.emit("pursue", f"${expected:.2f} expected: "
                             f"{decision.get('plan', '')} ({decision.get('url', '')})")
         work = self.brain.think(
