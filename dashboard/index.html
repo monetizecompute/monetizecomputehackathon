@@ -45,6 +45,7 @@
   .k-booked { color: var(--amber) } .k-banked { color: var(--green) } .k-death { color: var(--red) }
   .k-birth, .k-rebirth { color: var(--green) } .k-error, .k-epitaph { color: var(--red) }
   .k-pass, .k-hands, .k-work { color: var(--text) }
+  .k-soul { color: #b48cff }
   .ledger div { display: flex; justify-content: space-between; font-size: 12.5px; padding: 3px 0; border-bottom: 1px solid #0f1520; }
   .ledger .memo { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 70%; }
   .grave { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin-bottom: 12px; }
@@ -100,7 +101,7 @@
   <div class="panel"><h2>Ledger</h2><div class="ledger" id="ledger"></div></div>
 </div>
 
-<footer id="modes">OpenClaw runtime · Nebius inference · Tavily search · Composio hands</footer>
+<footer id="modes">OpenClaw runtime · Nebius inference · Tavily search · Composio hands · mem0 soul</footer>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -168,7 +169,8 @@ async function tick() {
     $("modes").textContent =
       `OpenClaw runtime · Nebius inference ${s.live_brain ? "LIVE" : "demo"}` +
       ` · Tavily search ${s.live_scout ? "LIVE" : "demo"}` +
-      ` · Composio hands ${s.live_hands ? "LIVE" : "demo"}`;
+      ` · Composio hands ${s.live_hands ? "LIVE" : "demo"}` +
+      ` · mem0 soul ${s.live_soul ? "LIVE" : "off"}`;
 
     const f = await (await fetch("/api/feed")).json();
     swapKeepingScroll($("feed"), f.events.map(e =>
