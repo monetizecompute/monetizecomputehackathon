@@ -44,6 +44,15 @@ curl -X POST localhost:8901/api/bank -H 'Content-Type: application/json' \
 Money the agent did not earn (a tip, a resurrection, your own top-up) must
 carry `"source": "donation"` so it never inflates revenue per million tokens.
 
+## Write off a bad booking (the gate's other half)
+
+When you reject the agent's work (a junk PR you closed, a claim that will
+never pay), the booking must die too, but the books are append-only: never
+edit or delete an entry. Record a negative booked entry of the same size
+with a memo saying why and a proof_url to the rejection. The dashboard's
+pending pipeline returns to truth, the history of the mistake stays
+readable, and the agent's soul should get the lesson in the same breath.
+
 Banking into a dead agent starts the next generation: same stake, inherited
 wills, zero inherited wealth.
 

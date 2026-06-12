@@ -156,7 +156,12 @@ curl -X POST localhost:8901/api/bank \
 Simulated anything is labeled simulated, on the dashboard and in the ledger.
 Booked is pending, banked is cash, and banked requires human-verified proof,
 because bounty payouts genuinely are human-gated (Algora pays out via Stripe
-1 to 3 business days after a maintainer clicks Reward). Donations keep the
+1 to 3 business days after a maintainer clicks Reward). Rejected work gets
+written off as a negative booked entry, never an edit: the books are
+append-only, and the history of a mistake stays readable. This is not
+hypothetical; on its first fully-landed chain the agent booked $69 for a
+pull request whose entire diff was one line of junk, and the human gate
+closed the PR, wrote off the booking, and put the lesson in its soul. Donations keep the
 agent alive but never count toward revenue per million tokens; the metric
 only sees what the agent earned. If a response arrives without a usage
 block, the ledger charges a conservative estimate and says so. If the agent
