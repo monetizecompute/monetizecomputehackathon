@@ -177,7 +177,9 @@ async function tick() {
       `<div><span class="t">${hhmm(e.ts)}</span><span class="k k-${esc(e.kind)}">${esc(e.kind)}</span>${esc(e.text)}</div>`
     ).join(""));
     swapKeepingScroll($("ledger"), f.ledger.map(l => {
-      const sign = l.kind === "debit" ? "-" : "+";
+      // A write-off is a negative booked entry; usd() already carries its
+      // minus sign, so only positive credits get an explicit plus.
+      const sign = l.kind === "debit" ? "-" : (l.amount_usd < 0 ? "" : "+");
       const cls = l.kind === "debit" ? "red" : (l.kind === "banked" ? "green" : "amber");
       return `<div><span class="memo">${esc(l.memo || l.kind)}</span><span class="${cls}">${sign}${usd(l.amount_usd)}</span></div>`;
     }).join(""));
