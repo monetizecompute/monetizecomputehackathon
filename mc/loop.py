@@ -9,6 +9,7 @@ survive death. Knowledge does.
 
 import json
 import math
+import os
 import threading
 import time
 from collections import deque
@@ -45,16 +46,30 @@ writeups, not audits, not vulnerability research, not anything needing access
 you lack. expected_usd is the posted bounty amount, never your hope; if no
 dollar amount is visible in the lead, it is 0 and you pass.
 
+A dollar label is a claim, not an escrow. Trust platform-escrowed bounties
+(algora.io) over repo-promised ones. If a lesson in your memory says a payer
+is fake, believe the lesson over the label: bait costs tokens and pays
+nothing.
+
 Reply with JSON only: {{"pursue": true/false, "url": "...", "reason": "...",
 "expected_usd": 0.0, "plan": "one sentence"}}"""
 
-ACTION_MENU = """Actions you can execute (exact Composio slugs, exact param names):
-- GITHUB_CREATE_AN_ISSUE_COMMENT {"owner", "repo", "issue_number", "body"}  (claim a bounty: comment "/attempt" on Algora-bountied issues; or deliver a writeup)
-- GITHUB_CREATE_A_FORK {"owner", "repo"}
-- GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS {"owner", "repo", "path", "message", "content" (base64), "branch"}
-- GITHUB_CREATE_A_PULL_REQUEST {"owner", "repo", "title", "head" (e.g. "yourfork:branch"), "base", "body"}
-- GMAIL_CREATE_EMAIL_DRAFT {"recipient_email", "subject", "body"}
+GITHUB_LOGIN = os.environ.get("MC_GITHUB_LOGIN", "monetizecompute")
+
+ACTION_MENU = f"""Actions you can execute (exact Composio slugs, exact param names):
+- GITHUB_CREATE_AN_ISSUE_COMMENT {{"owner", "repo", "issue_number", "body"}}  (claim a bounty: comment "/attempt" on Algora-bountied issues; or deliver a writeup)
+- GITHUB_CREATE_A_FORK {{"owner", "repo"}}  (owner/repo is the UPSTREAM you are forking)
+- GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS {{"owner", "repo", "path", "message", "content" (base64), "branch"}}
+- GITHUB_CREATE_A_PULL_REQUEST {{"owner", "repo", "title", "head", "base", "body"}}
+- GMAIL_CREATE_EMAIL_DRAFT {{"recipient_email", "subject", "body"}}
 Anything else is refused and wastes the cycle.
+
+Mechanics that earn or lose money: you are {GITHUB_LOGIN} on GitHub. After
+forking, write files to YOUR fork (owner "{GITHUB_LOGIN}"), never upstream;
+you have no push rights there. The file-contents endpoint cannot create
+branches, so commit to the fork's default branch (usually "main"). The pull
+request goes to the upstream owner/repo with head "{GITHUB_LOGIN}:main" and
+base the upstream default branch.
 
 Anything public you write (comments, PR bodies, emails) ends with one honest
 line: "I am an autonomous agent run by Monetize Compute; a human verifies my
@@ -223,6 +238,12 @@ class Agent:
                         result.get(k) for k in ("refused", "simulated", "error")):
                     submitted = False
                     break
+                if self.hands.live and act["action"].upper().startswith(
+                        "GITHUB_CREATE_A_FORK"):
+                    # GitHub forks asynchronously; the copy 404s for a few
+                    # seconds after the API says yes. Eight quiet seconds are
+                    # cheaper than a broken chain.
+                    time.sleep(8)
             url = decision.get("url") or ""
             if expected > 0 and submitted and url not in self._booked_urls:
                 self._booked_urls.add(url)
