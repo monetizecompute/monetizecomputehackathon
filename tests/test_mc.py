@@ -503,6 +503,59 @@ class FailedCallStillChargesTest(unittest.TestCase):
         self.assertGreater(recent["amount_usd"], 0)
         self.assertIn("worst case", recent["memo"])
 
+class ReadBeforeWriteTest(unittest.TestCase):
+    def test_plain_text_content_is_encoded_for_github(self):
+        import base64 as b64
+        agent = Agent(stake=5.0, cycle_seconds=0, db_path=tmp_db())
+        script = iter([
+            '{"pursue": true, "url": "https://x.test/1", "expected_usd": 10, "plan": "p"}',
+            '{"action": "GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS", "params":'
+            ' {"owner": "me", "repo": "r", "path": "f.ts", "branch": "b",'
+            ' "content": "export const x = 1;"}}',
+        ])
+        agent.brain.think = lambda *a, **k: next(script)
+        sent = {}
+        def fake_execute(action, params):
+            if action == "GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS":
+                sent.update(params)
+            return {"successful": True}
+        agent.hands.execute = fake_execute
+        agent.run_cycle()
+        self.assertEqual(b64.b64decode(sent["content"]).decode(),
+                         "export const x = 1;")
+
+    def test_issue_lead_is_fetched_into_the_execute_prompt(self):
+        agent = Agent(stake=5.0, cycle_seconds=0, db_path=tmp_db())
+        agent.hands.api_key = "test-key"  # live hands, faked below
+        agent.scout.hunt = lambda q: [{
+            "title": "t", "url": "https://github.com/o/r/issues/7",
+            "content": ""}]
+        script = iter([
+            '{"pursue": true, "url": "https://github.com/o/r/issues/7",'
+            ' "expected_usd": 5, "plan": "p"}',
+            "writeup, no actions",
+        ])
+        prompts = []
+        def think(messages, memo=None, **k):
+            prompts.append(messages[-1]["content"])
+            return next(script)
+        agent.brain.think = think
+        asked = []
+        def fake_execute(action, params):
+            asked.append(action)
+            return {"data": {"title": "Real title",
+                             "body": "Steps: do the thing in file X"}}
+        agent.hands.execute = fake_execute
+        agent.run_cycle()
+        self.assertIn("GITHUB_GET_AN_ISSUE", asked)
+        self.assertIn("do the thing in file X", prompts[-1])
+
+    def test_keyless_hands_skip_the_issue_fetch(self):
+        agent = Agent(stake=5.0, cycle_seconds=0, db_path=tmp_db())
+        self.assertEqual(agent._fetch_issue("https://github.com/o/r/issues/7"), "")
+        self.assertEqual(agent._fetch_issue("https://example.com/lead"), "")
+
+
 class DefaultBranchTest(unittest.TestCase):
     def test_placeholder_resolves_once_per_repo_through_hands(self):
         agent = Agent(stake=5.0, cycle_seconds=0, db_path=tmp_db())
