@@ -62,6 +62,11 @@ ALGORA_ROW = re.compile(
     r"\$(\d[\d,]*(?:\.\d+)?)\s*\[([^\]]+)\]"
     r"\((https://github\.com/[^)\s]+/issues/\d+)\)")
 
+# IssueHunt hides the GitHub issue behind a numeric repo id. Unresolved,
+# the loop cannot read the issue before acting, and tonight that meant
+# pursuing a bounty on an issue that closed in 2019.
+ISSUEHUNT_URL = re.compile(r"issuehunt\.io/repos/(\d+)/issues/(\d+)")
+
 
 def parse_algora_rows(text):
     """Issue-level leads out of an Algora org bounty board. These are the
@@ -84,6 +89,7 @@ class Scout:
     def __init__(self):
         self.api_key = os.environ.get("TAVILY_API_KEY")
         self._demo_n = 0
+        self._repo_names = {}  # numeric GitHub repo id -> owner/name
 
     @property
     def live(self):
@@ -135,7 +141,32 @@ class Scout:
         boards = [l["url"] for l in leads if "algora.io/" in l["url"]][:2]
         for page in self._extract(boards):
             leads.extend(parse_algora_rows(page))
-        return leads
+        return [self._resolve_indirection(l) for l in leads]
+
+    def _resolve_indirection(self, lead):
+        """Platform leads that hide the GitHub issue behind an id get
+        rewritten to the issue itself, so the loop can read before it
+        writes. Unresolvable stays as-is; the brain sees what we saw."""
+        m = ISSUEHUNT_URL.search(lead.get("url") or "")
+        if not m:
+            return lead
+        repo_id, issue_n = m.group(1), m.group(2)
+        if repo_id not in self._repo_names:
+            req = urllib.request.Request(
+                f"https://api.github.com/repositories/{repo_id}",
+                headers={"User-Agent": "monetize-compute",
+                         "Accept": "application/vnd.github+json"})
+            try:
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    self._repo_names[repo_id] = (
+                        json.loads(resp.read()) or {}).get("full_name")
+            except Exception:
+                self._repo_names[repo_id] = None
+        full_name = self._repo_names[repo_id]
+        if full_name:
+            lead["url"] = sanitize(
+                f"https://github.com/{full_name}/issues/{issue_n}")
+        return lead
 
     def _extract(self, urls):
         if not urls or not self.live:

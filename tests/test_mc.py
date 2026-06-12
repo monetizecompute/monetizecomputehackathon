@@ -552,8 +552,38 @@ class ReadBeforeWriteTest(unittest.TestCase):
 
     def test_keyless_hands_skip_the_issue_fetch(self):
         agent = Agent(stake=5.0, cycle_seconds=0, db_path=tmp_db())
-        self.assertEqual(agent._fetch_issue("https://github.com/o/r/issues/7"), "")
-        self.assertEqual(agent._fetch_issue("https://example.com/lead"), "")
+        self.assertIsNone(agent._fetch_issue("https://github.com/o/r/issues/7"))
+        self.assertIsNone(agent._fetch_issue("https://example.com/lead"))
+
+    def test_closed_issue_is_a_pass_before_execute_tokens_burn(self):
+        agent = Agent(stake=5.0, cycle_seconds=0, db_path=tmp_db())
+        agent.hands.api_key = "test-key"
+        agent.scout.hunt = lambda q: [{
+            "title": "t", "url": "https://github.com/o/r/issues/9",
+            "content": ""}]
+        thoughts = []
+        def think(messages, memo=None, **k):
+            thoughts.append(memo)
+            return ('{"pursue": true, "url": "https://github.com/o/r/issues/9",'
+                    ' "expected_usd": 20, "plan": "p"}')
+        agent.brain.think = think
+        agent.hands.execute = lambda a, p: {
+            "data": {"title": "Old bug", "body": "ancient", "state": "closed"}}
+        agent.run_cycle()
+        self.assertEqual(len(thoughts), 1)  # scored, never executed
+        self.assertTrue(any("closed issue" in e["text"] for e in agent.events))
+        self.assertEqual(agent.ledger.stats()["booked"], 0)
+
+    def test_issuehunt_urls_resolve_to_github_issues(self):
+        from mc.scout import Scout
+        scout = Scout()
+        scout._repo_names["34526884"] = "ant-design/ant-design"  # cached
+        lead = scout._resolve_indirection(
+            {"url": "https://issuehunt.io/repos/34526884/issues/12402"})
+        self.assertEqual(
+            lead["url"], "https://github.com/ant-design/ant-design/issues/12402")
+        untouched = scout._resolve_indirection({"url": "https://x.test/lead"})
+        self.assertEqual(untouched["url"], "https://x.test/lead")
 
 
 class DefaultBranchTest(unittest.TestCase):

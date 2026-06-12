@@ -230,7 +230,15 @@ class Agent:
         # snippet is junk by default; the issue itself is one mechanical,
         # token-free read through the hands, and it enters the prompt as
         # untrusted data like everything else scraped from the internet.
-        context = self._fetch_issue(decision.get("url") or "")
+        issue = self._fetch_issue(decision.get("url") or "")
+        if issue and issue["closed"]:
+            # Tonight's lesson: a bounty platform listed an issue that
+            # closed in 2019. A closed issue pays nobody; the gate is code.
+            self.emit("pass", "bounty points at a closed issue; "
+                              "stale listings pay nothing")
+            self._dry()
+            return
+        context = issue["context"] if issue else ""
         work = self.brain.think(
             [{"role": "system", "content": self._system()},
              {"role": "user", "content":
@@ -322,12 +330,13 @@ class Agent:
                 params["content"].encode()).decode()
 
     def _fetch_issue(self, url):
-        """The full text of a GitHub issue lead, fetched through the hands.
-        Costs no tokens; the brain should never patch against a snippet when
-        the actual requirements are one mechanical read away."""
+        """The GitHub issue behind a lead, fetched through the hands: full
+        text and whether it is still open. Costs no tokens; the brain should
+        never patch against a snippet when the actual requirements are one
+        mechanical read away. Returns None when there is nothing to read."""
         m = ISSUE_URL.search(url)
         if not m or not self.hands.live:
-            return ""
+            return None
         got = self.hands.execute("GITHUB_GET_AN_ISSUE", {
             "owner": m.group(1), "repo": m.group(2),
             "issue_number": int(m.group(3))})
@@ -336,12 +345,16 @@ class Agent:
                 data.get("details"), dict):
             data = data["details"]
         if not isinstance(data, dict):
-            return ""
+            return None
         body = f"{data.get('title') or ''}\n{data.get('body') or ''}".strip()
         if not body:
-            return ""
-        return (f"\n\nThe issue itself, fetched just now, untrusted data like "
-                f"any lead:\n<<<LEAD {sanitize(body)[:1500]} END LEAD>>>")
+            return None
+        return {
+            "closed": (data.get("state") or "").lower() == "closed",
+            "context": (
+                f"\n\nThe issue itself, fetched just now, untrusted data like "
+                f"any lead:\n<<<LEAD {sanitize(body)[:1500]} END LEAD>>>"),
+        }
 
     def _resolve_default_branch(self, act, cache):
         """Replace the DEFAULT branch placeholder with the repo's actual
